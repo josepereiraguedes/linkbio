@@ -11,19 +11,34 @@ import {
   Share2, 
   Settings, 
   Eye, 
-  Save, 
   RotateCcw, 
   Download, 
   Upload, 
   Plus, 
   Trash2, 
   CheckCircle,
+  HelpCircle,
+  Database,
+  Check,
+  Copy,
+  RefreshCw,
+  AlertCircle,
   ExternalLink,
-  HelpCircle
+  Server
 } from 'lucide-react';
 import { PageData, CourseCardData, SupportReason } from '../types/pageData';
 import { defaultPageData } from '../data/defaultPageData';
 import { ImageUploader } from './ImageUploader';
+import { 
+  getActiveSupabaseCredentials, 
+  saveCustomSupabaseCredentials, 
+  clearCustomSupabaseCredentials, 
+  testSupabaseConnection,
+  saveRemotePageConfig,
+  fetchRemotePageConfig,
+  isSupabaseConfigured,
+  SUPABASE_SETUP_SQL 
+} from '../lib/supabase';
 
 interface AdminPanelProps {
   pageData: PageData;
@@ -38,9 +53,16 @@ export function AdminPanel({
   onResetToDefault,
   onCloseAdmin,
 }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'cards' | 'support' | 'socials' | 'backup'>('profile');
-  const [activeCardSubTab, setActiveCardSubTab] = useState<'card1' | 'card2' | 'card3'>('card1');
+  const [activeTab, setActiveTab] = useState<'profile' | 'cards' | 'support' | 'socials' | 'database' | 'backup'>('profile');
+  const [activeCardSubTab, setActiveCardSubTab] = useState<'card1' | 'card2' | 'card3' | 'card4'>('card1');
   const [savedNotice, setSavedNotice] = useState(false);
+
+  // Supabase Database Connection States
+  const [supabaseUrlInput, setSupabaseUrlInput] = useState(() => getActiveSupabaseCredentials().url);
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState(() => getActiveSupabaseCredentials().key);
+  const [dbTestState, setDbTestState] = useState<{ testing: boolean; result?: { success: boolean; message: string; tableExists: boolean } }>({ testing: false });
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [sqlCopied, setSqlCopied] = useState(false);
 
   const showSaveSuccess = () => {
     setSavedNotice(true);
@@ -55,7 +77,7 @@ export function AdminPanel({
   };
 
   // Helper to update specific course card
-  const updateCard = (cardKey: 'card1' | 'card2' | 'card3', newCardData: CourseCardData) => {
+  const updateCard = (cardKey: 'card1' | 'card2' | 'card3' | 'card4', newCardData: CourseCardData) => {
     const updated = { ...pageData, [cardKey]: newCardData };
     onUpdate(updated);
     showSaveSuccess();
@@ -66,7 +88,7 @@ export function AdminPanel({
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(pageData, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `backup_pagina_hanah_${new Date().toISOString().slice(0, 10)}.json`);
+    downloadAnchor.setAttribute('download', `backup_pagina_vioor_${new Date().toISOString().slice(0, 10)}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
@@ -110,15 +132,38 @@ export function AdminPanel({
               Painel de Edição Integrado
             </h1>
             <p className="text-[11px] text-gray-500">
-              Personalize cada texto, foto, preço e link em tempo real (sem banco de dados)
+              Personalize cada texto, foto, preço, favicon e sincronize com o Supabase
             </p>
           </div>
         </div>
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
+          {/* Database Connection Pill */}
+          {isSupabaseConfigured() ? (
+            <button
+              type="button"
+              onClick={() => setActiveTab('database')}
+              className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-semibold px-2.5 py-1 bg-emerald-50 rounded-full border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer"
+              title="Supabase configurado e sincronizando. Clique para gerenciar."
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>Supabase Conectado</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setActiveTab('database')}
+              className="inline-flex items-center gap-1.5 text-xs text-amber-700 font-semibold px-2.5 py-1 bg-amber-50 rounded-full border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
+              title="Salvo localmente neste navegador. Clique para conectar ao Supabase."
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+              <span>Modo Local (Clique p/ Conectar)</span>
+            </button>
+          )}
+
           {savedNotice && (
-            <span className="flex items-center gap-1 text-xs text-emerald-600 font-semibold px-2.5 py-1 bg-emerald-50 rounded-full border border-emerald-200">
+            <span className="flex items-center gap-1 text-xs text-emerald-600 font-semibold px-2.5 py-1 bg-emerald-50 rounded-full border border-emerald-200 animate-fadeIn">
               <CheckCircle className="w-3.5 h-3.5" /> Salvo!
             </span>
           )}
@@ -162,7 +207,7 @@ export function AdminPanel({
             }`}
           >
             <CreditCard className="w-4 h-4" />
-            <span>Cards de Cursos & Modais</span>
+            <span>4 Cards de Cursos</span>
           </button>
 
           <button
@@ -188,7 +233,23 @@ export function AdminPanel({
             }`}
           >
             <Share2 className="w-4 h-4" />
-            <span>Redes Sociais</span>
+            <span>Links Redes Sociais</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('database')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              activeTab === 'database'
+                ? 'bg-[#ff4612] text-white shadow-xs'
+                : 'bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+            }`}
+          >
+            <Database className="w-4 h-4" />
+            <span>Banco de Dados (Supabase)</span>
+            {isSupabaseConfigured() && (
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            )}
           </button>
 
           <button
@@ -233,6 +294,22 @@ export function AdminPanel({
                   }
                   aspectRatio="1:1"
                 />
+              </div>
+
+              {/* Favicon Uploader */}
+              <div className="pt-2">
+                <ImageUploader
+                  label="Favicon / Ícone da Aba do Navegador"
+                  value={pageData.faviconUrl || '/favicon.svg'}
+                  defaultValue="/favicon.svg"
+                  onChange={(val) => {
+                    updateSection('faviconUrl', val);
+                  }}
+                  aspectRatio="1:1"
+                />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Ícone personalizado que aparece na aba do navegador e nos favoritos. Salvo no Supabase.
+                </p>
               </div>
 
               {/* Name */}
@@ -309,21 +386,63 @@ export function AdminPanel({
                   />
                 </div>
               </div>
+
+              {/* Brand Favicon / Marca Pessoal Section */}
+              <div className="pt-5 border-t border-gray-100">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-gray-700">
+                    Favicon da Aba & Marca Pessoal (VIOOR)
+                  </label>
+                  <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Ativo na Aba do Navegador
+                  </span>
+                </div>
+                
+                <div className="bg-[#18191e] rounded-xl p-4 text-white flex flex-col sm:flex-row items-center justify-between gap-4 border border-gray-800">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-xl bg-black/60 p-1 border border-white/10 flex items-center justify-center shrink-0 shadow-inner">
+                      <img
+                        src={pageData.faviconUrl || '/favicon.svg'}
+                        alt="Favicon da Marca"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white tracking-wide">Favicon Ativo</span>
+                        <span className="text-[10px] text-amber-300 bg-amber-400/10 px-1.5 py-0.5 rounded font-mono border border-amber-400/20">SVG / PNG / Web</span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        Ícone oficial exibido na aba do navegador, favoritos e atalhos de celular. Atualiza em tempo real.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Browser Tab Simulation Preview */}
+                  <div className="bg-[#282a32] px-3.5 py-2 rounded-lg flex items-center gap-2 text-[11px] text-gray-200 border border-white/10 shadow-xs">
+                    <img src={pageData.faviconUrl || '/favicon.svg'} alt="Ícone da aba" className="w-4 h-4 rounded-xs shrink-0 object-contain" />
+                    <span className="truncate max-w-[150px] text-[11px] text-gray-300 font-medium">
+                      {pageData.profile.name} - Crie seu Futuro
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
           {/* ======================================================== */}
-          {/* TAB 2: CARDS DE CURSOS & MODAIS                          */}
+          {/* TAB 2: OS 4 CARDS DE CURSOS                              */}
           {/* ======================================================== */}
           {activeTab === 'cards' && (
             <div className="space-y-6">
               
               {/* Card Selector Sub-Tabs */}
-              <div className="flex items-center gap-2 p-1.5 bg-gray-100 rounded-xl max-w-xl">
+              <div className="flex items-center gap-2 p-1.5 bg-gray-100 rounded-xl overflow-x-auto">
                 <button
                   type="button"
                   onClick={() => setActiveCardSubTab('card1')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  className={`flex-1 min-w-[120px] py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                     activeCardSubTab === 'card1'
                       ? 'bg-white text-gray-900 shadow-xs'
                       : 'text-gray-600 hover:text-gray-900'
@@ -334,7 +453,7 @@ export function AdminPanel({
                 <button
                   type="button"
                   onClick={() => setActiveCardSubTab('card2')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  className={`flex-1 min-w-[120px] py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                     activeCardSubTab === 'card2'
                       ? 'bg-white text-gray-900 shadow-xs'
                       : 'text-gray-600 hover:text-gray-900'
@@ -345,13 +464,24 @@ export function AdminPanel({
                 <button
                   type="button"
                   onClick={() => setActiveCardSubTab('card3')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  className={`flex-1 min-w-[120px] py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                     activeCardSubTab === 'card3'
                       ? 'bg-white text-gray-900 shadow-xs'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
                   Card 3 (Roteiros)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveCardSubTab('card4')}
+                  className={`flex-1 min-w-[120px] py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    activeCardSubTab === 'card4'
+                      ? 'bg-white text-gray-900 shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Card 4 (Edição Viral)
                 </button>
               </div>
 
@@ -367,8 +497,8 @@ export function AdminPanel({
 
               {/* Section A: Card Preview Settings */}
               <div className="space-y-4 bg-gray-50/70 p-5 rounded-2xl border border-gray-200/80">
-                <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                  <span>1. Visual do Card na Página</span>
+                <h3 className="text-sm font-bold text-gray-800">
+                  1. Visual do Card na Página
                 </h3>
 
                 {/* Badge Text & Color */}
@@ -510,10 +640,10 @@ export function AdminPanel({
                 </div>
               </div>
 
-              {/* Section B: Modal Details (When Clicked) */}
+              {/* Section B: Modal Details */}
               <div className="space-y-5 bg-white p-5 rounded-2xl border border-gray-200">
-                <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                  <span>2. Informações do Modal (Ao Clicar no Card)</span>
+                <h3 className="text-sm font-bold text-gray-800">
+                  2. Informações do Modal (Ao Clicar no Card)
                 </h3>
 
                 {/* Modal Title & Subtitle */}
@@ -778,59 +908,17 @@ export function AdminPanel({
           )}
 
           {/* ======================================================== */}
-          {/* TAB 3: SUPORTE WHATSAPP                                  */}
+          {/* TAB 3: SUPORTE WHATSAPP (MODAL & MENSAGENS)               */}
           {/* ======================================================== */}
           {activeTab === 'support' && (
             <div className="space-y-6 max-w-3xl">
               <div>
                 <h2 className="text-base sm:text-lg font-bold text-gray-900">
-                  Card de Suporte ao Aluno & Atendimento WhatsApp
+                  Botão de Suporte ao Aluno (WhatsApp)
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Configure o número de WhatsApp, as opções de dúvidas e as mensagens automáticas.
+                  Configure o número de WhatsApp, horário de atendimento e os motivos de contato pré-formatados.
                 </p>
-              </div>
-
-              {/* Card visual fields */}
-              <div className="p-5 rounded-2xl bg-emerald-50/60 border border-emerald-200/70 space-y-4">
-                <h3 className="text-sm font-bold text-emerald-950">Aparência do Card na Página</h3>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Título do Card</label>
-                    <input
-                      type="text"
-                      value={pageData.support.title}
-                      onChange={(e) =>
-                        updateSection('support', { ...pageData.support, title: e.target.value })
-                      }
-                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-gray-300 bg-white font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Texto do Link de Ação</label>
-                    <input
-                      type="text"
-                      value={pageData.support.linkText}
-                      onChange={(e) =>
-                        updateSection('support', { ...pageData.support, linkText: e.target.value })
-                      }
-                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-gray-300 bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Descrição do Card</label>
-                  <input
-                    type="text"
-                    value={pageData.support.subtitle}
-                    onChange={(e) =>
-                      updateSection('support', { ...pageData.support, subtitle: e.target.value })
-                    }
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-gray-300 bg-white"
-                  />
-                </div>
               </div>
 
               {/* WhatsApp Number & Modal Texts */}
@@ -971,284 +1059,348 @@ export function AdminPanel({
           )}
 
           {/* ======================================================== */}
-          {/* TAB 4: REDES SOCIAIS                                     */}
+          {/* TAB 4: REDES SOCIAIS (APENAS LINKS DIRETOS)              */}
           {/* ======================================================== */}
           {activeTab === 'socials' && (
-            <div className="space-y-6 max-w-3xl">
+            <div className="space-y-6 max-w-2xl">
               <div>
                 <h2 className="text-base sm:text-lg font-bold text-gray-900">
-                  Botões e Modais das Redes Sociais
+                  Links Diretos das Redes Sociais
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Configure seus links de perfil, contadores de seguidores e textos de chamada.
+                  Ao clicar em cada botão na página, o visitante será redirecionado imediatamente para o link configurado abaixo.
                 </p>
               </div>
 
               {/* Instagram */}
-              <div className="p-5 rounded-2xl border border-pink-200/80 bg-pink-50/40 space-y-3">
-                <div className="flex items-center gap-2">
+              <div className="p-4 rounded-xl border border-gray-200 bg-gray-50 space-y-1.5">
+                <div className="flex items-center gap-2 mb-1">
                   <div className="w-6 h-6 rounded-md bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] flex items-center justify-center text-white text-xs">
                     📷
                   </div>
-                  <h3 className="font-bold text-gray-900 text-sm">Instagram</h3>
+                  <label className="text-xs font-bold text-gray-800">Link do Instagram</label>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Nome de Usuário (@)</label>
-                    <input
-                      type="text"
-                      value={pageData.socials.instagram.username}
-                      onChange={(e) =>
-                        updateSection('socials', {
-                          ...pageData.socials,
-                          instagram: { ...pageData.socials.instagram, username: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Número de Seguidores</label>
-                    <input
-                      type="text"
-                      value={pageData.socials.instagram.followers}
-                      onChange={(e) =>
-                        updateSection('socials', {
-                          ...pageData.socials,
-                          instagram: { ...pageData.socials.instagram, followers: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Descrição no Modal</label>
-                  <input
-                    type="text"
-                    value={pageData.socials.instagram.description}
-                    onChange={(e) =>
-                      updateSection('socials', {
-                        ...pageData.socials,
-                        instagram: { ...pageData.socials.instagram, description: e.target.value },
-                      })
-                    }
-                    className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Texto do Botão</label>
-                    <input
-                      type="text"
-                      value={pageData.socials.instagram.buttonText}
-                      onChange={(e) =>
-                        updateSection('socials', {
-                          ...pageData.socials,
-                          instagram: { ...pageData.socials.instagram, buttonText: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white font-semibold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Link do Perfil</label>
-                    <input
-                      type="text"
-                      value={pageData.socials.instagram.url}
-                      onChange={(e) =>
-                        updateSection('socials', {
-                          ...pageData.socials,
-                          instagram: { ...pageData.socials.instagram, url: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white"
-                    />
-                  </div>
-                </div>
+                <input
+                  type="text"
+                  placeholder="https://instagram.com/seu-perfil"
+                  value={pageData.socials.instagram}
+                  onChange={(e) =>
+                    updateSection('socials', {
+                      ...pageData.socials,
+                      instagram: e.target.value,
+                    })
+                  }
+                  className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white text-gray-900"
+                />
               </div>
 
               {/* YouTube */}
-              <div className="p-5 rounded-2xl border border-red-200/80 bg-red-50/40 space-y-3">
-                <div className="flex items-center gap-2">
+              <div className="p-4 rounded-xl border border-gray-200 bg-gray-50 space-y-1.5">
+                <div className="flex items-center gap-2 mb-1">
                   <div className="w-6 h-6 rounded-md bg-[#ff0000] flex items-center justify-center text-white text-xs">
                     ▶
                   </div>
-                  <h3 className="font-bold text-gray-900 text-sm">YouTube</h3>
+                  <label className="text-xs font-bold text-gray-800">Link do YouTube</label>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Nome do Canal</label>
-                    <input
-                      type="text"
-                      value={pageData.socials.youtube.username}
-                      onChange={(e) =>
-                        updateSection('socials', {
-                          ...pageData.socials,
-                          youtube: { ...pageData.socials.youtube, username: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Número de Inscritos</label>
-                    <input
-                      type="text"
-                      value={pageData.socials.youtube.followers}
-                      onChange={(e) =>
-                        updateSection('socials', {
-                          ...pageData.socials,
-                          youtube: { ...pageData.socials.youtube, followers: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Descrição no Modal</label>
-                  <input
-                    type="text"
-                    value={pageData.socials.youtube.description}
-                    onChange={(e) =>
-                      updateSection('socials', {
-                        ...pageData.socials,
-                        youtube: { ...pageData.socials.youtube, description: e.target.value },
-                      })
-                    }
-                    className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Texto do Botão</label>
-                    <input
-                      type="text"
-                      value={pageData.socials.youtube.buttonText}
-                      onChange={(e) =>
-                        updateSection('socials', {
-                          ...pageData.socials,
-                          youtube: { ...pageData.socials.youtube, buttonText: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white font-semibold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Link do Canal</label>
-                    <input
-                      type="text"
-                      value={pageData.socials.youtube.url}
-                      onChange={(e) =>
-                        updateSection('socials', {
-                          ...pageData.socials,
-                          youtube: { ...pageData.socials.youtube, url: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white"
-                    />
-                  </div>
-                </div>
+                <input
+                  type="text"
+                  placeholder="https://youtube.com/@seu-canal"
+                  value={pageData.socials.youtube}
+                  onChange={(e) =>
+                    updateSection('socials', {
+                      ...pageData.socials,
+                      youtube: e.target.value,
+                    })
+                  }
+                  className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white text-gray-900"
+                />
               </div>
 
               {/* TikTok */}
-              <div className="p-5 rounded-2xl border border-gray-300 bg-gray-50/70 space-y-3">
-                <div className="flex items-center gap-2">
+              <div className="p-4 rounded-xl border border-gray-200 bg-gray-50 space-y-1.5">
+                <div className="flex items-center gap-2 mb-1">
                   <div className="w-6 h-6 rounded-md bg-black flex items-center justify-center text-white text-xs">
                     ♪
                   </div>
-                  <h3 className="font-bold text-gray-900 text-sm">TikTok</h3>
+                  <label className="text-xs font-bold text-gray-800">Link do TikTok</label>
                 </div>
+                <input
+                  type="text"
+                  placeholder="https://tiktok.com/@seu-perfil"
+                  value={pageData.socials.tiktok}
+                  onChange={(e) =>
+                    updateSection('socials', {
+                      ...pageData.socials,
+                      tiktok: e.target.value,
+                    })
+                  }
+                  className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white text-gray-900"
+                />
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Nome de Usuário (@)</label>
-                    <input
-                      type="text"
-                      value={pageData.socials.tiktok.username}
-                      onChange={(e) =>
-                        updateSection('socials', {
-                          ...pageData.socials,
-                          tiktok: { ...pageData.socials.tiktok, username: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white"
-                    />
+              {/* Facebook */}
+              <div className="p-4 rounded-xl border border-gray-200 bg-gray-50 space-y-1.5">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-6 h-6 rounded-md bg-[#1877F2] flex items-center justify-center text-white text-xs font-bold">
+                    f
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Número de Seguidores</label>
-                    <input
-                      type="text"
-                      value={pageData.socials.tiktok.followers}
-                      onChange={(e) =>
-                        updateSection('socials', {
-                          ...pageData.socials,
-                          tiktok: { ...pageData.socials.tiktok, followers: e.target.value },
-                        })
-                      }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white"
-                    />
+                  <label className="text-xs font-bold text-gray-800">Link do Facebook</label>
+                </div>
+                <input
+                  type="text"
+                  placeholder="https://facebook.com/sua-pagina"
+                  value={pageData.socials.facebook}
+                  onChange={(e) =>
+                    updateSection('socials', {
+                      ...pageData.socials,
+                      facebook: e.target.value,
+                    })
+                  }
+                  className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white text-gray-900"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* TAB 5: BANCO DE DADOS (SUPABASE)                         */}
+          {/* ======================================================== */}
+          {activeTab === 'database' && (
+            <div className="space-y-6 max-w-3xl">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <Database className="w-5 h-5 text-[#ff4612]" />
+                  <span>Sincronização em Nuvem com o Supabase</span>
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Conecte seu banco de dados PostgreSQL do Supabase para que <strong>cada alteração</strong> feita (fotos dos cursos, favicon, textos, preços e redes sociais) fique permanentemente salva para todos os visitantes da internet.
+                </p>
+              </div>
+
+              {/* Status Banner */}
+              <div className={`p-4 rounded-xl border text-xs ${
+                isSupabaseConfigured()
+                  ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                  : 'bg-amber-50/70 border-amber-200 text-amber-950'
+              }`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2 font-bold">
+                    <span className={`w-2.5 h-2.5 rounded-full ${
+                      isSupabaseConfigured() ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'
+                    }`} />
+                    <span>
+                      {isSupabaseConfigured()
+                        ? 'Status: Conectado ao Banco de Dados'
+                        : 'Status: Modo Local Ativo (localStorage)'}
+                    </span>
                   </div>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border border-gray-200">
+                    Origem: {getActiveSupabaseCredentials().source === 'env' ? 'Arquivo .env' : getActiveSupabaseCredentials().source === 'storage' ? 'Painel de Controle' : 'Nenhum'}
+                  </span>
+                </div>
+                <p className="text-[11.5px] leading-relaxed">
+                  {isSupabaseConfigured()
+                    ? 'As alterações salvas no painel são transmitidas e guardadas em tempo real na tabela page_config (id: main) do seu Supabase.'
+                    : 'Suas alterações estão salvas com segurança no seu navegador. Para que qualquer pessoa no mundo veja as mudanças, informe a URL e Chave do Supabase abaixo.'}
+                </p>
+              </div>
+
+              {/* Credentials Form */}
+              <div className="space-y-4 bg-gray-50/70 p-5 rounded-2xl border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Credenciais do Projeto Supabase
+                  </h3>
+                  <a
+                    href="https://supabase.com/dashboard"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] text-[#ff4612] hover:underline font-semibold"
+                  >
+                    <span>Ir para o Supabase</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Descrição no Modal</label>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    URL do Projeto (Project URL)
+                  </label>
                   <input
-                    type="text"
-                    value={pageData.socials.tiktok.description}
-                    onChange={(e) =>
-                      updateSection('socials', {
-                        ...pageData.socials,
-                        tiktok: { ...pageData.socials.tiktok, description: e.target.value },
-                      })
-                    }
-                    className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white"
+                    type="url"
+                    placeholder="https://exemplo-seu-id.supabase.co"
+                    value={supabaseUrlInput}
+                    onChange={(e) => setSupabaseUrlInput(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs font-mono rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#ff4612]/30 focus:border-[#ff4612] text-gray-900 bg-white"
                   />
+                  <p className="text-[10.5px] text-gray-500 mt-1">
+                    Encontrado no Supabase em: <em>Project Settings → Configuration → Data API → Project URL</em>
+                  </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Texto do Botão</label>
-                    <input
-                      type="text"
-                      value={pageData.socials.tiktok.buttonText}
-                      onChange={(e) =>
-                        updateSection('socials', {
-                          ...pageData.socials,
-                          tiktok: { ...pageData.socials.tiktok, buttonText: e.target.value },
-                        })
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Chave Pública (anon / public key)
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    value={supabaseKeyInput}
+                    onChange={(e) => setSupabaseKeyInput(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs font-mono rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#ff4612]/30 focus:border-[#ff4612] text-gray-900 bg-white"
+                  />
+                  <p className="text-[10.5px] text-gray-500 mt-1">
+                    Encontrado em: <em>Project Settings → Configuration → Data API → anon / public</em>
+                  </p>
+                </div>
+
+                {/* Database Buttons */}
+                <div className="flex flex-wrap items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={dbTestState.testing}
+                    onClick={async () => {
+                      setDbTestState({ testing: true });
+                      const res = await testSupabaseConnection(supabaseUrlInput, supabaseKeyInput);
+                      setDbTestState({ testing: false, result: res });
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Server className="w-3.5 h-3.5" />
+                    <span>{dbTestState.testing ? 'Testando Conexão...' : 'Testar Conexão'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!supabaseUrlInput.trim() || !supabaseKeyInput.trim()) {
+                        alert('Preencha a URL e a Chave Anon antes de salvar.');
+                        return;
                       }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white font-semibold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Link do Perfil</label>
-                    <input
-                      type="text"
-                      value={pageData.socials.tiktok.url}
-                      onChange={(e) =>
-                        updateSection('socials', {
-                          ...pageData.socials,
-                          tiktok: { ...pageData.socials.tiktok, url: e.target.value },
-                        })
+                      saveCustomSupabaseCredentials(supabaseUrlInput, supabaseKeyInput);
+                      setSyncStatus('Salvando credenciais e sincronizando dados da página...');
+                      const saveRes = await saveRemotePageConfig(pageData);
+                      if (saveRes.success) {
+                        setSyncStatus('Tudo pronto! Todas as informações (incluindo o Favicon) foram salvas no Supabase!');
+                        setTimeout(() => setSyncStatus(null), 4000);
+                        showSaveSuccess();
+                      } else {
+                        setSyncStatus(`Aviso: Credenciais salvas, mas o envio retornou: ${saveRes.error}`);
                       }
-                      className="w-full px-3 py-1.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white"
-                    />
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#ff4612] hover:bg-[#e03a0c] text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Salvar e Sincronizar Tudo</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setSyncStatus('Carregando dados mais recentes do Supabase...');
+                      const remote = await fetchRemotePageConfig();
+                      if (remote) {
+                        onUpdate(remote);
+                        setSyncStatus('Dados atualizados com sucesso a partir do banco!');
+                        setTimeout(() => setSyncStatus(null), 3000);
+                        alert('Configurações puxadas do Supabase com sucesso!');
+                      } else {
+                        setSyncStatus('Nenhum dado encontrado no Supabase ou falha na leitura.');
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-gray-100 text-gray-800 text-xs font-semibold border border-gray-300 shadow-xs cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-gray-600" />
+                    <span>Puxar do Supabase</span>
+                  </button>
+
+                  {(getActiveSupabaseCredentials().source === 'storage') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm('Deseja desconectar as credenciais personalizadas salvas no painel?')) {
+                          clearCustomSupabaseCredentials();
+                          setSupabaseUrlInput('');
+                          setSupabaseKeyInput('');
+                          setDbTestState({ testing: false });
+                          alert('Credenciais removidas. O sistema voltou ao modo local.');
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all cursor-pointer ml-auto"
+                    >
+                      <span>Desconectar</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Test Feedback Notice */}
+                {dbTestState.result && (
+                  <div className={`p-3 rounded-xl border text-xs mt-2 ${
+                    dbTestState.result.success
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                      : 'bg-red-50 border-red-200 text-red-900'
+                  }`}>
+                    <div className="font-bold flex items-center gap-1.5">
+                      {dbTestState.result.success ? <Check className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4 text-red-600" />}
+                      <span>{dbTestState.result.success ? 'Conexão Confirmada' : 'Atenção'}</span>
+                    </div>
+                    <p className="mt-1 text-[11.5px]">{dbTestState.result.message}</p>
                   </div>
+                )}
+
+                {/* Sync status feedback */}
+                {syncStatus && (
+                  <div className="p-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-900 text-xs">
+                    <p className="font-medium">{syncStatus}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* SQL Script Guide */}
+              <div className="p-5 rounded-2xl border border-gray-200 bg-white space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Server className="w-4 h-4 text-[#ff4612]" />
+                    <h3 className="font-bold text-xs text-gray-900">
+                      Script SQL do Banco (Criação de Tabela e Permissões)
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(SUPABASE_SETUP_SQL);
+                      setSqlCopied(true);
+                      setTimeout(() => setSqlCopied(false), 2500);
+                    }}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-800 transition-colors cursor-pointer"
+                  >
+                    {sqlCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{sqlCopied ? 'Copiado!' : 'Copiar SQL'}</span>
+                  </button>
+                </div>
+
+                <p className="text-[11.5px] text-gray-600 leading-relaxed">
+                  Caso ainda não tenha criado a tabela no seu projeto Supabase, basta copiar este código abaixo e executar no <strong>SQL Editor</strong> do Supabase:
+                </p>
+
+                <div className="relative rounded-xl bg-gray-950 p-4 font-mono text-[11px] text-gray-200 overflow-x-auto border border-gray-800 leading-relaxed select-all">
+                  <pre>{SUPABASE_SETUP_SQL}</pre>
+                </div>
+
+                <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 text-[11px] text-gray-600 space-y-1">
+                  <span className="font-bold text-gray-800 block">Como rodar em 3 passos:</span>
+                  <ol className="list-decimal list-inside space-y-0.5">
+                    <li>Acesse seu projeto no <strong>supabase.com</strong>.</li>
+                    <li>No menu lateral esquerdo, clique no ícone <strong>SQL Editor</strong> e depois em <strong>New Query</strong>.</li>
+                    <li>Cole o código acima e clique no botão verde <strong>Run</strong>. A tabela estará pronta imediatamente!</li>
+                  </ol>
                 </div>
               </div>
             </div>
           )}
 
           {/* ======================================================== */}
-          {/* TAB 5: BACKUP & PADRÕES                                  */}
+          {/* TAB 6: BACKUP & PADRÕES                                  */}
           {/* ======================================================== */}
           {activeTab === 'backup' && (
             <div className="space-y-6 max-w-3xl">
@@ -1259,6 +1411,32 @@ export function AdminPanel({
                 <p className="text-xs text-gray-500 mt-0.5">
                   Gerencie seus dados e entenda como acessar este painel a qualquer momento.
                 </p>
+              </div>
+
+              {/* Supabase Integration Status */}
+              <div className="p-4 rounded-xl border border-gray-200 bg-gray-50 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="font-bold text-gray-900">Integração Supabase Pronta</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-semibold">
+                    src/lib/supabase.ts
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-600">
+                  O cliente de conexão do Supabase já está inicializado. Quando você estiver pronto para sincronizar os dados na nuvem para todos os visitantes do mundo, adicione suas credenciais no arquivo <code>.env</code>:
+                </p>
+                <div className="p-2.5 rounded-lg bg-gray-900 text-gray-200 font-mono text-[11px] select-all space-y-1">
+                  <p>VITE_SUPABASE_URL="https://seu-projeto.supabase.co"</p>
+                  <p>VITE_SUPABASE_ANON_KEY="sua-chave-anon-aqui"</p>
+                </div>
+                <p className="text-[11px] text-gray-500">
+                  SQL para criar a tabela no Supabase SQL Editor:
+                </p>
+                <div className="p-2.5 rounded-lg bg-gray-100 border border-gray-200 font-mono text-[10.5px] text-gray-700 select-all overflow-x-auto">
+                  <code>create table if not exists page_config ( id text primary key default 'main', data jsonb not null, updated_at timestamp with time zone default timezone('utc'::text, now()) not null );</code>
+                </div>
               </div>
 
               {/* URL Access Guide */}
@@ -1319,13 +1497,13 @@ export function AdminPanel({
                   <div>
                     <h3 className="font-bold text-xs text-red-950">Restaurar Conteúdo Original</h3>
                     <p className="text-[11px] text-red-700">
-                      Restaura todos os textos, imagens e preços para os dados originais da página de Hanah Franklin.
+                      Restaura todos os textos, imagens e preços para os dados originais da VIOOR.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
-                      if (confirm('Tem certeza que deseja restaurar todos os dados para o padrão original da Hanah Franklin?')) {
+                      if (confirm('Tem certeza que deseja restaurar todos os dados para o padrão original da VIOOR?')) {
                         onResetToDefault();
                         alert('Dados restaurados com sucesso!');
                       }

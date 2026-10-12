@@ -12,34 +12,54 @@ import {
   ShieldCheck, 
   Share2, 
   Check, 
-  ChevronRight, 
   TrendingUp, 
   Flame,
-  Settings,
   Edit3
 } from 'lucide-react';
 
 import { PageData, CourseCardData } from './types/pageData';
 import { defaultPageData } from './data/defaultPageData';
 import { AdminPanel } from './components/AdminPanel';
+import { fetchRemotePageConfig, saveRemotePageConfig, isSupabaseConfigured } from './lib/supabase';
 
-const STORAGE_KEY = 'hanah_franklin_page_data_v1';
+const STORAGE_KEY = 'vioor_page_data_v1';
 
 export default function App() {
   // Page Data State (with localStorage persistence)
   const [pageData, setPageData] = useState<PageData>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('hanah_franklin_page_data_v2');
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Ensure all required fields exist by merging with default
+        // Cleanses any legacy reference to Hanah Franklin
+        if (parsed.profile?.name === 'Hanah Franklin') {
+          parsed.profile.name = defaultPageData.profile.name;
+          parsed.profile.avatarUrl = defaultPageData.profile.avatarUrl;
+          parsed.profile.bioHeading = defaultPageData.profile.bioHeading;
+          parsed.profile.bioBody = defaultPageData.profile.bioBody;
+        }
+        if (parsed.card1?.coverImage?.includes('hanah') || parsed.card1?.coverImage?.includes('portuguese_1791833654392')) {
+          parsed.card1.coverImage = defaultPageData.card1.coverImage;
+        }
+        if (parsed.card2?.coverImage?.includes('spanish_1791833665248')) {
+          parsed.card2.coverImage = defaultPageData.card2.coverImage;
+        }
+        if (parsed.card1?.modalSubtitle?.includes('Hanah')) {
+          parsed.card1.modalSubtitle = defaultPageData.card1.modalSubtitle;
+        }
+        if (parsed.card2?.modalSubtitle?.includes('Hanah')) {
+          parsed.card2.modalSubtitle = defaultPageData.card2.modalSubtitle;
+        }
+
         return {
           ...defaultPageData,
           ...parsed,
+          faviconUrl: parsed.faviconUrl || defaultPageData.faviconUrl,
           profile: { ...defaultPageData.profile, ...parsed.profile },
           card1: { ...defaultPageData.card1, ...parsed.card1 },
           card2: { ...defaultPageData.card2, ...parsed.card2 },
           card3: { ...defaultPageData.card3, ...parsed.card3 },
+          card4: { ...defaultPageData.card4, ...parsed.card4 },
           support: { ...defaultPageData.support, ...parsed.support },
           socials: { ...defaultPageData.socials, ...parsed.socials },
         };
@@ -56,6 +76,38 @@ export default function App() {
     const url = window.location.href.toLowerCase();
     return url.includes('admin') || url.includes('admim');
   });
+
+  // Dynamically synchronize browser tab favicon with pageData.faviconUrl
+  useEffect(() => {
+    const faviconHref = pageData.faviconUrl || '/favicon.svg';
+    const iconLinks = document.querySelectorAll<HTMLLinkElement>("link[rel*='icon']");
+    if (iconLinks.length > 0) {
+      iconLinks.forEach((link) => {
+        link.href = faviconHref;
+      });
+    } else {
+      const link = document.createElement('link');
+      link.rel = 'icon';
+      link.href = faviconHref;
+      document.head.appendChild(link);
+    }
+  }, [pageData.faviconUrl]);
+
+  // Load from Supabase on mount if configured
+  useEffect(() => {
+    if (isSupabaseConfigured()) {
+      fetchRemotePageConfig().then((remoteData) => {
+        if (remoteData) {
+          setPageData(remoteData);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteData));
+          } catch (e) {
+            console.warn(e);
+          }
+        }
+      });
+    }
+  }, []);
 
   // Listen to URL changes
   useEffect(() => {
@@ -80,6 +132,11 @@ export default function App() {
     } catch (e) {
       console.error('Falha ao salvar no localStorage:', e);
     }
+
+    // Also sync to Supabase if configured
+    if (isSupabaseConfigured()) {
+      saveRemotePageConfig(newData);
+    }
   };
 
   // Reset to default
@@ -89,6 +146,10 @@ export default function App() {
       localStorage.removeItem(STORAGE_KEY);
     } catch (e) {
       console.error('Falha ao limpar localStorage:', e);
+    }
+
+    if (isSupabaseConfigured()) {
+      saveRemotePageConfig(defaultPageData);
     }
   };
 
@@ -113,8 +174,7 @@ export default function App() {
   };
 
   // Modal State in Public View
-  const [activeModal, setActiveModal] = useState<'card1' | 'card2' | 'card3' | 'support' | 'social' | null>(null);
-  const [selectedSocial, setSelectedSocial] = useState<'instagram' | 'youtube' | 'tiktok'>('instagram');
+  const [activeModal, setActiveModal] = useState<'card1' | 'card2' | 'card3' | 'card4' | 'support' | null>(null);
   const [supportIssue, setSupportIssue] = useState<string>('acesso');
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -126,10 +186,16 @@ export default function App() {
 
   const openWhatsApp = () => {
     const selectedReason = pageData.support.reasons.find((r) => r.id === supportIssue);
-    const msgText = selectedReason?.message || 'Olá equipe de suporte da Hanah Franklin! Preciso de ajuda.';
+    const msgText = selectedReason?.message || 'Olá equipe de suporte da VIOOR! Preciso de ajuda.';
     const encodedText = encodeURIComponent(msgText);
     const phone = pageData.support.whatsappNumber.replace(/\D/g, '') || '5511999999999';
     window.open(`https://wa.me/${phone}?text=${encodedText}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleSocialClick = (url: string) => {
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   };
 
   // Helper to render course modal
@@ -248,6 +314,59 @@ export default function App() {
     </div>
   );
 
+  // Helper to render course card in grid
+  const renderCard = (card: CourseCardData, modalKey: 'card1' | 'card2' | 'card3' | 'card4', delayClass = '') => (
+    <article 
+      onClick={() => setActiveModal(modalKey)}
+      className={`notebook-grid rounded-[28px] p-5 sm:p-6 shadow-xs hover:shadow-md transition-all duration-300 border border-gray-900/10 cursor-pointer flex justify-between items-center group relative overflow-hidden animate-fade-slide-up ${delayClass}`}
+    >
+      <div className="flex flex-col justify-between h-full pr-3 sm:pr-4 flex-1 min-w-0">
+        <div>
+          <span 
+            className="inline-block text-[11.5px] sm:text-[12.5px] font-semibold px-3 py-0.5 rounded-full bg-white/75 backdrop-blur-xs mb-3 border"
+            style={{ borderColor: `${card.badgeColor}bf`, color: card.badgeColor }}
+          >
+            {card.badge}
+          </span>
+          
+          {/* Main Copy (3 lines) */}
+          <p className="text-[13.5px] sm:text-[14px] md:text-[14.5px] text-gray-800 leading-[1.38]">
+            {card.line1}<br className="hidden sm:inline" />
+            {' '}{card.line2Prefix}<strong className="font-bold text-gray-950">{card.line2Bold}</strong><br className="hidden sm:inline" />
+            {' '}<strong className="font-bold text-gray-950">{card.line3Bold}</strong>{card.line3Suffix}
+          </p>
+        </div>
+
+        <div className="mt-4 pt-0.5">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveModal(modalKey);
+            }}
+            className="text-white text-[13px] sm:text-[13.5px] font-bold px-5 py-2 rounded-full shadow-xs hover:shadow transition-all duration-200 inline-flex items-center gap-1 group-hover:scale-103 cursor-pointer"
+            style={{ backgroundColor: card.badgeColor }}
+          >
+            {card.buttonText}
+          </button>
+        </div>
+      </div>
+
+      {/* Cover Mockup */}
+      <div className="w-[96px] sm:w-[110px] md:w-[118px] h-[138px] sm:h-[156px] md:h-[168px] rounded-2xl overflow-hidden shadow-md border border-white/70 shrink-0 bg-gray-100 transition-transform duration-300 group-hover:scale-102">
+        <img
+          src={card.coverImage}
+          alt={card.modalTitle}
+          referrerPolicy="no-referrer"
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            (e.target as HTMLImageElement).src = defaultPageData.card1.coverImage;
+          }}
+        />
+      </div>
+    </article>
+  );
+
   // If Admin View is active, render the integrated Admin Panel!
   if (isAdminView) {
     return (
@@ -264,20 +383,8 @@ export default function App() {
   return (
     <div className="min-h-screen w-full bg-[#edece8] flex flex-col justify-center items-center p-4 sm:p-8 md:p-12 lg:p-14 selection:bg-[#ff4612]/20 selection:text-[#ff4612] relative overflow-x-hidden">
       
-      {/* Top Floating Buttons: Share + Quick Admin Shortcut */}
-      <header className="absolute top-4 right-4 sm:top-6 sm:right-8 z-10 flex items-center gap-2.5">
-        
-        {/* Quick Edit/Admin Trigger Button */}
-        <button
-          onClick={openAdmin}
-          title="Abrir Painel de Edição (?admin)"
-          aria-label="Abrir Painel de Edição"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/80 hover:bg-white text-gray-700 text-xs font-semibold shadow-xs border border-gray-200/70 backdrop-blur-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
-        >
-          <Edit3 className="w-3.5 h-3.5 text-[#ff4612]" />
-          <span>Editar Página</span>
-        </button>
-
+      {/* Top Floating Buttons: Share */}
+      <header className="absolute top-4 right-4 sm:top-6 sm:right-8 z-10 flex items-center gap-2.5 animate-fade-slide-up">
         {/* Share Button */}
         <button
           onClick={handleCopyLink}
@@ -301,24 +408,24 @@ export default function App() {
       {/* Main Container - Desktop side-by-side & Mobile stacked */}
       <main className="w-full max-w-[1260px] mx-auto flex flex-col lg:flex-row items-center lg:items-start justify-center gap-10 lg:gap-14 py-6 sm:py-10">
         
-        {/* Left Column: Profile Info */}
-        <section className="flex flex-col items-center lg:items-start text-center lg:text-left shrink-0 w-full max-w-[340px]">
+        {/* Left Column: Profile Info with smooth entrance */}
+        <section className="flex flex-col items-center lg:items-start text-center lg:text-left shrink-0 w-full max-w-[340px] animate-fade-slide-up">
           
-          {/* Circular Avatar */}
-          <div className="relative group cursor-pointer" onClick={() => setActiveModal('card1')}>
-            <div className="w-36 h-36 sm:w-44 sm:h-44 md:w-48 md:h-48 rounded-full overflow-hidden shadow-sm border-[4px] border-white/90 bg-emerald-100 flex items-center justify-center transition-transform duration-300 group-hover:scale-102">
+          {/* Circular Avatar with smooth hover micro-interaction */}
+          <div className="relative group cursor-default">
+            <div className="w-36 h-36 sm:w-44 sm:h-44 md:w-48 md:h-48 rounded-full overflow-hidden shadow-sm border-[4px] border-white/90 bg-emerald-100 flex items-center justify-center transition-all duration-500 ease-out group-hover:scale-103 group-hover:shadow-md group-hover:border-white">
               <img
                 src={pageData.profile.avatarUrl}
                 alt={pageData.profile.name}
                 referrerPolicy="no-referrer"
-                className="w-full h-full object-cover object-center"
+                className="w-full h-full object-cover object-center select-none transition-transform duration-700 ease-out group-hover:scale-108"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = defaultPageData.profile.avatarUrl;
                 }}
               />
             </div>
             {/* Verification badge */}
-            <div className="absolute bottom-1.5 right-2.5 bg-white rounded-full p-1 shadow-xs border border-gray-100">
+            <div className="absolute bottom-1.5 right-2.5 bg-white rounded-full p-1 shadow-xs border border-gray-100 transition-transform duration-300 ease-out group-hover:scale-110">
               <div className="w-5 h-5 rounded-full bg-[#ff4612] flex items-center justify-center text-white text-[11px] font-bold">
                 ✓
               </div>
@@ -348,203 +455,37 @@ export default function App() {
           </div>
         </section>
 
-        {/* Right Section: 4 Cards (Grid 2x2 on desktop, single column on mobile) + Social Buttons right-aligned */}
+        {/* Right Section: 4 Full Course Cards (Grid 2x2 on desktop, single column on mobile) + Social Buttons right-aligned */}
         <section className="w-full max-w-[850px] lg:max-w-[880px] flex flex-col">
           
+          {/* Grid with 4 Course Cards (staggered entrance) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6 items-stretch">
-            
-            {/* 1º CARD: Método para Viralização (Portuguese) */}
-            <article 
-              onClick={() => setActiveModal('card1')}
-              className="notebook-grid rounded-[28px] p-5 sm:p-6 shadow-xs hover:shadow-md transition-all duration-300 border border-amber-900/10 cursor-pointer flex justify-between items-center group relative overflow-hidden"
-            >
-              <div className="flex flex-col justify-between h-full pr-3 sm:pr-4 flex-1 min-w-0">
-                <div>
-                  <span 
-                    className="inline-block text-[11.5px] sm:text-[12.5px] font-semibold px-3 py-0.5 rounded-full bg-white/75 backdrop-blur-xs mb-3 border"
-                    style={{ borderColor: `${pageData.card1.badgeColor}bf`, color: pageData.card1.badgeColor }}
-                  >
-                    {pageData.card1.badge}
-                  </span>
-                  
-                  {/* Main Copy (3 lines) */}
-                  <p className="text-[13.5px] sm:text-[14px] md:text-[14.5px] text-gray-800 leading-[1.38]">
-                    {pageData.card1.line1}<br className="hidden sm:inline" />
-                    {' '}{pageData.card1.line2Prefix}<strong className="font-bold text-gray-950">{pageData.card1.line2Bold}</strong><br className="hidden sm:inline" />
-                    {' '}<strong className="font-bold text-gray-950">{pageData.card1.line3Bold}</strong>{pageData.card1.line3Suffix}
-                  </p>
-                </div>
-
-                <div className="mt-4 pt-0.5">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveModal('card1');
-                    }}
-                    className="text-white text-[13px] sm:text-[13.5px] font-bold px-5 py-2 rounded-full shadow-xs hover:shadow transition-all duration-200 inline-flex items-center gap-1 group-hover:scale-103 cursor-pointer"
-                    style={{ backgroundColor: pageData.card1.badgeColor }}
-                  >
-                    {pageData.card1.buttonText}
-                  </button>
-                </div>
-              </div>
-
-              {/* Cover Mockup */}
-              <div className="w-[96px] sm:w-[110px] md:w-[118px] h-[138px] sm:h-[156px] md:h-[168px] rounded-2xl overflow-hidden shadow-md border border-white/70 shrink-0 bg-orange-100 transition-transform duration-300 group-hover:scale-102">
-                <img
-                  src={pageData.card1.coverImage}
-                  alt={pageData.card1.modalTitle}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = defaultPageData.card1.coverImage;
-                  }}
-                />
-              </div>
-            </article>
-
-            {/* 2º CARD: Método viral - Español */}
-            <article 
-              onClick={() => setActiveModal('card2')}
-              className="notebook-grid rounded-[28px] p-5 sm:p-6 shadow-xs hover:shadow-md transition-all duration-300 border border-emerald-950/10 cursor-pointer flex justify-between items-center group relative overflow-hidden"
-            >
-              <div className="flex flex-col justify-between h-full pr-3 sm:pr-4 flex-1 min-w-0">
-                <div>
-                  <span 
-                    className="inline-block text-[11.5px] sm:text-[12.5px] font-semibold px-3 py-0.5 rounded-full bg-white/75 backdrop-blur-xs mb-3 border"
-                    style={{ borderColor: `${pageData.card2.badgeColor}bf`, color: pageData.card2.badgeColor }}
-                  >
-                    {pageData.card2.badge}
-                  </span>
-                  
-                  {/* Main Copy (3 lines) */}
-                  <p className="text-[13.5px] sm:text-[14px] md:text-[14.5px] text-gray-800 leading-[1.38]">
-                    {pageData.card2.line1}<br className="hidden sm:inline" />
-                    {' '}{pageData.card2.line2Prefix}<strong className="font-bold text-gray-950">{pageData.card2.line2Bold}</strong><br className="hidden sm:inline" />
-                    {' '}<strong className="font-bold text-gray-950">{pageData.card2.line3Bold}</strong>{pageData.card2.line3Suffix}
-                  </p>
-                </div>
-
-                <div className="mt-4 pt-0.5">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveModal('card2');
-                    }}
-                    className="text-white text-[13px] sm:text-[13.5px] font-bold px-5 py-2 rounded-full shadow-xs hover:shadow transition-all duration-200 inline-flex items-center gap-1 group-hover:scale-103 cursor-pointer"
-                    style={{ backgroundColor: pageData.card2.badgeColor }}
-                  >
-                    {pageData.card2.buttonText}
-                  </button>
-                </div>
-              </div>
-
-              {/* Cover Mockup */}
-              <div className="w-[96px] sm:w-[110px] md:w-[118px] h-[138px] sm:h-[156px] md:h-[168px] rounded-2xl overflow-hidden shadow-md border border-white/70 shrink-0 bg-emerald-100 transition-transform duration-300 group-hover:scale-102">
-                <img
-                  src={pageData.card2.coverImage}
-                  alt={pageData.card2.modalTitle}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = defaultPageData.card2.coverImage;
-                  }}
-                />
-              </div>
-            </article>
-
-            {/* 3º CARD: Pack de Roteiros Magnéticos */}
-            <article 
-              onClick={() => setActiveModal('card3')}
-              className="notebook-grid rounded-[28px] p-5 sm:p-6 shadow-xs hover:shadow-md transition-all duration-300 border border-purple-950/10 cursor-pointer flex justify-between items-center group relative overflow-hidden"
-            >
-              <div className="flex flex-col justify-between h-full pr-3 sm:pr-4 flex-1 min-w-0">
-                <div>
-                  <span 
-                    className="inline-block text-[11.5px] sm:text-[12.5px] font-semibold px-3 py-0.5 rounded-full bg-white/75 backdrop-blur-xs mb-3 border"
-                    style={{ borderColor: `${pageData.card3.badgeColor}bf`, color: pageData.card3.badgeColor }}
-                  >
-                    {pageData.card3.badge}
-                  </span>
-                  
-                  {/* Main Copy (3 lines) */}
-                  <p className="text-[13.5px] sm:text-[14px] md:text-[14.5px] text-gray-800 leading-[1.38]">
-                    {pageData.card3.line1}<br className="hidden sm:inline" />
-                    {' '}{pageData.card3.line2Prefix}<strong className="font-bold text-gray-950">{pageData.card3.line2Bold}</strong><br className="hidden sm:inline" />
-                    {' '}<strong className="font-bold text-gray-950">{pageData.card3.line3Bold}</strong>{pageData.card3.line3Suffix}
-                  </p>
-                </div>
-
-                <div className="mt-4 pt-0.5">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveModal('card3');
-                    }}
-                    className="text-white text-[13px] sm:text-[13.5px] font-bold px-5 py-2 rounded-full shadow-xs hover:shadow transition-all duration-200 inline-flex items-center gap-1 group-hover:scale-103 cursor-pointer"
-                    style={{ backgroundColor: pageData.card3.badgeColor }}
-                  >
-                    {pageData.card3.buttonText}
-                  </button>
-                </div>
-              </div>
-
-              {/* Cover Mockup */}
-              <div className="w-[96px] sm:w-[110px] md:w-[118px] h-[138px] sm:h-[156px] md:h-[168px] rounded-2xl overflow-hidden shadow-md border border-white/70 shrink-0 bg-purple-100 transition-transform duration-300 group-hover:scale-102">
-                <img
-                  src={pageData.card3.coverImage}
-                  alt={pageData.card3.modalTitle}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = defaultPageData.card3.coverImage;
-                  }}
-                />
-              </div>
-            </article>
-
-            {/* 4º CARD: Suporte aos Alunos (4º lugar, último no celular) */}
-            <article 
-              onClick={() => setActiveModal('support')}
-              className="bg-[#e8f7e3] rounded-[28px] p-5 sm:p-6 shadow-xs hover:shadow-md transition-all duration-300 border border-emerald-700/10 cursor-pointer flex flex-col justify-between group min-h-[142px] sm:min-h-[152px]"
-            >
-              <div>
-                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#25D366] flex items-center justify-center text-white shadow-xs group-hover:scale-108 transition-transform duration-200">
-                  <svg viewBox="0 0 24 24" className="w-6 h-6 fill-white">
-                    <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0012.04 2zm0 18.15c-1.49 0-2.95-.4-4.22-1.16l-.3-.18-3.13.82.84-3.05-.2-.31a8.19 8.19 0 01-1.26-4.36c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.83 2.42a8.18 8.18 0 012.41 5.82c.01 4.54-3.68 8.24-8.22 8.24zm4.51-6.17c-.25-.12-1.46-.72-1.69-.81-.23-.08-.39-.12-.56.12-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-2-1.23-.74-.66-1.24-1.47-1.39-1.72-.14-.25-.02-.38.11-.5.11-.11.25-.29.37-.43.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.43s-.56-1.35-.77-1.85c-.2-.48-.41-.42-.56-.43h-.48c-.17 0-.43.06-.66.31-.22.25-.86.84-.86 2.05s.88 2.38 1 2.55c.12.17 1.74 2.65 4.21 3.72.59.25 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.46-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.06-.11-.22-.18-.47-.3z"/>
-                  </svg>
-                </div>
-
-                <h2 className="font-bold text-gray-950 text-[16px] sm:text-[17.5px] mt-3">
-                  {pageData.support.title}
-                </h2>
-                
-                <p className="text-[12.5px] sm:text-[13.5px] text-gray-600 mt-1">
-                  {pageData.support.subtitle}
-                </p>
-              </div>
-
-              <div className="mt-3 flex items-center text-xs font-semibold text-emerald-800 gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <span>{pageData.support.linkText}</span>
-                <ChevronRight className="w-4 h-4" />
-              </div>
-            </article>
-
+            {renderCard(pageData.card1, 'card1', 'delay-150')}
+            {renderCard(pageData.card2, 'card2', 'delay-225')}
+            {renderCard(pageData.card3, 'card3', 'delay-300')}
+            {renderCard(pageData.card4, 'card4', 'delay-375')}
           </div>
 
-          {/* SOCIAL MEDIA BUTTONS - Aligned to the RIGHT */}
-          <div className="w-full flex justify-end items-center gap-3.5 mt-5 sm:mt-6 pr-1">
+          {/* BUTTONS BAR: WhatsApp Support + Instagram + YouTube + TikTok + Facebook (Aligned to the RIGHT with smooth delay) */}
+          <div className="w-full flex justify-end items-center gap-3 mt-5 sm:mt-6 pr-1 flex-wrap animate-fade-slide-up delay-450">
             
+            {/* WhatsApp Support Button (same style as social buttons, opens support modal) */}
+            <button
+              type="button"
+              onClick={() => setActiveModal('support')}
+              title="Suporte aos Alunos (WhatsApp)"
+              aria-label="Suporte aos Alunos"
+              className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[#25D366] flex items-center justify-center text-white shadow-xs hover:shadow-md hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer"
+            >
+              <svg viewBox="0 0 24 24" className="w-5 h-5 sm:w-6 sm:h-6 fill-white">
+                <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0012.04 2zm0 18.15c-1.49 0-2.95-.4-4.22-1.16l-.3-.18-3.13.82.84-3.05-.2-.31a8.19 8.19 0 01-1.26-4.36c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.83 2.42a8.18 8.18 0 012.41 5.82c.01 4.54-3.68 8.24-8.22 8.24zm4.51-6.17c-.25-.12-1.46-.72-1.69-.81-.23-.08-.39-.12-.56.12-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-2-1.23-.74-.66-1.24-1.47-1.39-1.72-.14-.25-.02-.38.11-.5.11-.11.25-.29.37-.43.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.43s-.56-1.35-.77-1.85c-.2-.48-.41-.42-.56-.43h-.48c-.17 0-.43.06-.66.31-.22.25-.86.84-.86 2.05s.88 2.38 1 2.55c.12.17 1.74 2.65 4.21 3.72.59.25 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.46-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.06-.11-.22-.18-.47-.3z"/>
+              </svg>
+            </button>
+
             {/* Instagram Button */}
             <button
               type="button"
-              onClick={() => {
-                setSelectedSocial('instagram');
-                setActiveModal('social');
-              }}
+              onClick={() => handleSocialClick(pageData.socials.instagram)}
               title="Instagram"
               aria-label="Instagram"
               className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] flex items-center justify-center text-white shadow-xs hover:shadow-md hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer"
@@ -557,10 +498,7 @@ export default function App() {
             {/* YouTube Button */}
             <button
               type="button"
-              onClick={() => {
-                setSelectedSocial('youtube');
-                setActiveModal('social');
-              }}
+              onClick={() => handleSocialClick(pageData.socials.youtube)}
               title="YouTube"
               aria-label="YouTube"
               className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[#ff0000] flex items-center justify-center text-white shadow-xs hover:shadow-md hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer"
@@ -573,16 +511,26 @@ export default function App() {
             {/* TikTok Button */}
             <button
               type="button"
-              onClick={() => {
-                setSelectedSocial('tiktok');
-                setActiveModal('social');
-              }}
+              onClick={() => handleSocialClick(pageData.socials.tiktok)}
               title="TikTok"
               aria-label="TikTok"
               className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white border border-gray-200/90 flex items-center justify-center text-black shadow-xs hover:shadow-md hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer"
             >
               <svg viewBox="0 0 24 24" className="w-5 h-5 sm:w-6 sm:h-6 fill-black">
                 <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.97-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.24 1.07-.14 1.61.24 1.19 1.19 2.14 2.37 2.37.77.16 1.59.08 2.28-.27.8-.39 1.37-1.14 1.55-2.01.07-.37.09-.76.09-1.14l-.02-13.91z"/>
+              </svg>
+            </button>
+
+            {/* Facebook Button */}
+            <button
+              type="button"
+              onClick={() => handleSocialClick(pageData.socials.facebook)}
+              title="Facebook"
+              aria-label="Facebook"
+              className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[#1877F2] flex items-center justify-center text-white shadow-xs hover:shadow-md hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer"
+            >
+              <svg viewBox="0 0 24 24" className="w-5 h-5 sm:w-6 sm:h-6 fill-white">
+                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
               </svg>
             </button>
 
@@ -598,6 +546,7 @@ export default function App() {
       {activeModal === 'card1' && renderCourseModal(pageData.card1)}
       {activeModal === 'card2' && renderCourseModal(pageData.card2)}
       {activeModal === 'card3' && renderCourseModal(pageData.card3)}
+      {activeModal === 'card4' && renderCourseModal(pageData.card4)}
 
       {/* MODAL SUPORTE (WHATSAPP) */}
       {activeModal === 'support' && (
@@ -665,150 +614,6 @@ export default function App() {
                 <span>Chamar no WhatsApp</span>
                 <ExternalLink className="w-4 h-4" />
               </button>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* MODAL REDES SOCIAIS */}
-      {activeModal === 'social' && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl relative border border-gray-100 p-6">
-            
-            <button
-              onClick={() => setActiveModal(null)}
-              className="absolute top-4 right-4 z-10 w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            {/* Profile Header */}
-            <div className="text-center pt-2">
-              <div className="w-18 h-18 rounded-full overflow-hidden mx-auto border-2 border-white shadow-md">
-                <img
-                  src={pageData.profile.avatarUrl}
-                  alt={pageData.profile.name}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = defaultPageData.profile.avatarUrl;
-                  }}
-                />
-              </div>
-              <h3 className="font-bold text-gray-900 mt-3 text-lg sm:text-xl">{pageData.profile.name}</h3>
-              <p className="text-xs sm:text-sm text-gray-500">{pageData.socials[selectedSocial].username}</p>
-            </div>
-
-            {/* Tabs for Socials */}
-            <div className="flex items-center justify-center gap-2 mt-5 bg-gray-100 p-1.5 rounded-xl">
-              <button
-                onClick={() => setSelectedSocial('instagram')}
-                className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors cursor-pointer ${
-                  selectedSocial === 'instagram' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
-                }`}
-              >
-                Instagram
-              </button>
-              <button
-                onClick={() => setSelectedSocial('youtube')}
-                className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors cursor-pointer ${
-                  selectedSocial === 'youtube' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
-                }`}
-              >
-                YouTube
-              </button>
-              <button
-                onClick={() => setSelectedSocial('tiktok')}
-                className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors cursor-pointer ${
-                  selectedSocial === 'tiktok' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
-                }`}
-              >
-                TikTok
-              </button>
-            </div>
-
-            {/* Dynamic Social Body */}
-            <div className="mt-5 text-center">
-              {selectedSocial === 'instagram' && (
-                <div className="space-y-4">
-                  <div className="bg-gradient-to-tr from-[#f09433]/10 via-[#dc2743]/10 to-[#bc1888]/10 p-4 rounded-2xl border border-pink-200/50">
-                    <p className="text-2xl sm:text-3xl font-black text-gray-900">
-                      {pageData.socials.instagram.followers}
-                    </p>
-                    <p className="text-xs sm:text-sm text-gray-600 font-medium">
-                      {pageData.socials.instagram.followersLabel}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-2">
-                      {pageData.socials.instagram.description}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      if (pageData.socials.instagram.url) {
-                        window.open(pageData.socials.instagram.url, '_blank', 'noopener,noreferrer');
-                      }
-                    }}
-                    className="w-full py-3 rounded-xl bg-gradient-to-r from-[#f09433] via-[#dc2743] to-[#bc1888] text-white font-bold text-xs sm:text-sm shadow-sm hover:opacity-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <span>{pageData.socials.instagram.buttonText}</span>
-                    <ExternalLink className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-
-              {selectedSocial === 'youtube' && (
-                <div className="space-y-4">
-                  <div className="bg-red-50 p-4 rounded-2xl border border-red-200/50">
-                    <p className="text-2xl sm:text-3xl font-black text-gray-900">
-                      {pageData.socials.youtube.followers}
-                    </p>
-                    <p className="text-xs sm:text-sm text-gray-600 font-medium">
-                      {pageData.socials.youtube.followersLabel}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-2">
-                      {pageData.socials.youtube.description}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      if (pageData.socials.youtube.url) {
-                        window.open(pageData.socials.youtube.url, '_blank', 'noopener,noreferrer');
-                      }
-                    }}
-                    className="w-full py-3 rounded-xl bg-[#ff0000] text-white font-bold text-xs sm:text-sm shadow-sm hover:bg-[#e60000] transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <span>{pageData.socials.youtube.buttonText}</span>
-                    <ExternalLink className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-
-              {selectedSocial === 'tiktok' && (
-                <div className="space-y-4">
-                  <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200">
-                    <p className="text-2xl sm:text-3xl font-black text-gray-900">
-                      {pageData.socials.tiktok.followers}
-                    </p>
-                    <p className="text-xs sm:text-sm text-gray-600 font-medium">
-                      {pageData.socials.tiktok.followersLabel}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-2">
-                      {pageData.socials.tiktok.description}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      if (pageData.socials.tiktok.url) {
-                        window.open(pageData.socials.tiktok.url, '_blank', 'noopener,noreferrer');
-                      }
-                    }}
-                    className="w-full py-3 rounded-xl bg-black text-white font-bold text-xs sm:text-sm shadow-sm hover:bg-gray-800 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <span>{pageData.socials.tiktok.buttonText}</span>
-                    <ExternalLink className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
             </div>
 
           </div>

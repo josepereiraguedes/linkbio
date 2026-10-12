@@ -4,22 +4,24 @@
  */
 
 import { PageData } from '../types/pageData';
-import avatarImg from '../assets/images/hanah_franklin_avatar_1791833644657.jpg';
-import courseCoverPt from '../assets/images/course_cover_portuguese_1791833654392.jpg';
-import courseCoverEs from '../assets/images/course_cover_spanish_1791833665248.jpg';
+import avatarImg from '../assets/images/vioor_agency_avatar_1791839927170.jpg';
+import courseCoverPt from '../assets/images/course_cover_pt_vioor_1791839948618.jpg';
+import courseCoverEs from '../assets/images/course_cover_es_vioor_1791839957337.jpg';
 import courseCoverRoteiros from '../assets/images/course_cover_roteiros_1791834663885.jpg';
+import courseCoverEdicaoViral from '../assets/images/course_cover_edicao_viral_1791836836980.jpg';
 
 export const defaultPageData: PageData = {
+  faviconUrl: '/favicon.svg',
   profile: {
     avatarUrl: avatarImg,
-    name: 'Hanah Franklin',
+    name: 'VIOOR',
     bioHeading: 'Crie seu futuro com a internet:',
-    bioBody: 'Transforme habilidades digitais em liberdade, relevância, influência e dinheiro.',
-    stat1: '+1.2M Criadores',
-    stat2: 'Método Viral',
+    bioBody: 'Transforme habilidades digitais em liberdade, relevância, influência e autoridade para sua marca.',
+    stat1: '+1.2M Visualizações',
+    stat2: 'Agência Digital',
   },
   card1: {
-    id: 'pt',
+    id: 'card1',
     badge: 'Método para Viralização',
     badgeColor: '#ff4612',
     line1: 'Entre para a lista de favoritos do',
@@ -33,7 +35,7 @@ export const defaultPageData: PageData = {
     // Modal
     modalTag: 'MÉTODO EXCLUSIVO',
     modalTitle: 'Método para Viralização',
-    modalSubtitle: 'Formato Criativo de Conteúdo com Hanah Franklin',
+    modalSubtitle: 'Formato Criativo de Conteúdo com a VIOOR',
     modalStats: '⭐ 4.9 (1.840 avaliações) · +18.000 alunos',
     learningTitle: 'O que você vai aprender:',
     learningItems: [
@@ -66,7 +68,7 @@ export const defaultPageData: PageData = {
     checkoutUrl: 'https://checkout.perfectpay.com.br/',
   },
   card2: {
-    id: 'es',
+    id: 'card2',
     badge: 'Método viral - Español',
     badgeColor: '#235848',
     line1: 'Entra en la lista de favoritos de',
@@ -80,7 +82,7 @@ export const defaultPageData: PageData = {
     // Modal
     modalTag: 'MÉTODO EXCLUSIVO · ESPAÑOL',
     modalTitle: 'Método Viral en Español',
-    modalSubtitle: 'Formato Creativo de Contenido por Hanah Franklin',
+    modalSubtitle: 'Formato Creativo de Contenido por VIOOR Agency',
     modalStats: '⭐ 4.9 (Valoración de alumnos) · Comunidad Hispana',
     learningTitle: 'Lo que aprenderás:',
     learningItems: [
@@ -113,7 +115,7 @@ export const defaultPageData: PageData = {
     checkoutUrl: 'https://hotmart.com/',
   },
   card3: {
-    id: 'roteiros',
+    id: 'card3',
     badge: 'Roteiros Magnéticos',
     badgeColor: '#7c3aed',
     line1: 'Copie e cole estruturas validadas de',
@@ -159,10 +161,54 @@ export const defaultPageData: PageData = {
     checkoutButtonText: 'Baixar Pack de Roteiros Agora',
     checkoutUrl: 'https://checkout.perfectpay.com.br/',
   },
+  card4: {
+    id: 'card4',
+    badge: 'Edição Viral no Celular',
+    badgeColor: '#0284c7',
+    line1: 'Domine cortes dinâmicos e efeitos que',
+    line2Prefix: 'fazem seus vídeos ',
+    line2Bold: 'prenderem a atenção',
+    line3Bold: 'do início ao fim',
+    line3Suffix: '.',
+    buttonText: 'Aprender Edição',
+    coverImage: courseCoverEdicaoViral,
+    
+    // Modal
+    modalTag: 'MASTERCLASS PRÁTICA',
+    modalTitle: 'Edição Viral no Celular',
+    modalSubtitle: 'Domine o CapCut e crie vídeos profissionais em minutos',
+    modalStats: '⭐ 4.9 (920 avaliações) · +8.500 alunos',
+    learningTitle: 'O que você vai dominar na prática:',
+    learningItems: [
+      {
+        title: 'Ritmo & Dinâmica de Corte:',
+        description: 'Como eliminar pausas e manter o espectador hipnotizado.',
+      },
+      {
+        title: 'Sound Design & Efeitos Sonoros:',
+        description: 'O segredo dos vídeos que bombam no algoritmo.',
+      },
+      {
+        title: 'Legendas Animadas e Ícones:',
+        description: 'Crie legendas idênticas às dos maiores criadores do mundo.',
+      },
+      {
+        title: 'Pack com 200+ Efeitos e Músicas:',
+        description: 'Biblioteca exclusiva pronta para usar no seu celular.',
+      },
+    ],
+    perk1Title: '100% no Celular',
+    perk1Desc: 'Edite sem precisar de computador',
+    perk2Title: 'Pack de Sons & Efeitos',
+    perk2Desc: 'Download direto no smartphone',
+    offerBadge: 'Condição Especial',
+    originalPrice: 'R$ 297,00',
+    installmentPrice: '12x R$ 9,70',
+    cashPrice: 'ou R$ 97 à vista',
+    checkoutButtonText: 'Começar Agora',
+    checkoutUrl: 'https://checkout.perfectpay.com.br/',
+  },
   support: {
-    title: 'Suporte aos Alunos',
-    subtitle: 'Clique aqui se já é aluno e precisa de ajuda.',
-    linkText: 'Abrir atendimento WhatsApp',
     whatsappNumber: '5511999999999',
     modalTitle: 'Central de Suporte ao Aluno',
     modalSubtitle: 'Nossa equipe está pronta para te atender de segunda a sexta, das 09h às 18h.',
@@ -171,13 +217,13 @@ export const defaultPageData: PageData = {
         id: 'acesso',
         title: 'Problema de Acesso / Login',
         desc: 'Não recebi o e-mail da Hotmart / Kiwify',
-        message: 'Olá equipe da Hanah! Comprei o Método para Viralização e preciso de ajuda com meu acesso.',
+        message: 'Olá equipe da VIOOR! Comprei o curso e preciso de ajuda com meu acesso.',
       },
       {
         id: 'duvida',
         title: 'Dúvidas sobre o Curso',
         desc: 'Perguntas sobre as aulas ou materiais',
-        message: 'Olá equipe da Hanah! Sou aluno(a) e tenho uma dúvida sobre as aulas do curso.',
+        message: 'Olá equipe da VIOOR! Sou aluno(a) e tenho uma dúvida sobre as aulas do curso.',
       },
       {
         id: 'comunidade',
@@ -189,34 +235,14 @@ export const defaultPageData: PageData = {
         id: 'outro',
         title: 'Outro Atendimento',
         desc: 'Falar diretamente com um atendente humano',
-        message: 'Olá equipe de suporte da Hanah Franklin! Preciso de ajuda com meu cadastro.',
+        message: 'Olá equipe de suporte da VIOOR! Preciso de ajuda com meu cadastro.',
       },
     ],
   },
   socials: {
-    instagram: {
-      username: '@hanahfranklin',
-      followers: '348.000',
-      followersLabel: 'Seguidores no Instagram',
-      description: 'Dicas diárias de conteúdo criativo nos Stories e Reels virais toda semana.',
-      buttonText: 'Seguir no Instagram',
-      url: 'https://instagram.com/',
-    },
-    youtube: {
-      username: 'Hanah Franklin',
-      followers: '128.000',
-      followersLabel: 'Inscritos no YouTube',
-      description: 'Aulas completas e aprofundadas sobre criação de conteúdo e monetização.',
-      buttonText: 'Inscrever-se no Canal',
-      url: 'https://youtube.com/',
-    },
-    tiktok: {
-      username: '@hanahfranklin.oficial',
-      followers: '512.000',
-      followersLabel: 'Seguidores no TikTok',
-      description: 'Vídeos rápidos de hacks de edição, roteiros e tendências da semana.',
-      buttonText: 'Acompanhar no TikTok',
-      url: 'https://tiktok.com/',
-    },
+    instagram: 'https://instagram.com/',
+    youtube: 'https://youtube.com/',
+    tiktok: 'https://tiktok.com/',
+    facebook: 'https://facebook.com/',
   },
 };
