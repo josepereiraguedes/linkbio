@@ -24,7 +24,12 @@ import {
   RefreshCw,
   AlertCircle,
   ExternalLink,
-  Server
+  Server,
+  Lock,
+  LogOut,
+  ShieldCheck,
+  Key,
+  EyeOff
 } from 'lucide-react';
 import { PageData, CourseCardData, SupportReason } from '../types/pageData';
 import { defaultPageData } from '../data/defaultPageData';
@@ -39,12 +44,18 @@ import {
   isSupabaseConfigured,
   SUPABASE_SETUP_SQL 
 } from '../lib/supabase';
+import { 
+  getLocalAdminCredentials, 
+  updateAdminCredentials, 
+  clearAdminSession 
+} from '../lib/auth';
 
 interface AdminPanelProps {
   pageData: PageData;
   onUpdate: (newData: PageData) => void;
   onResetToDefault: () => void;
   onCloseAdmin: () => void;
+  onLogout?: () => void;
 }
 
 export function AdminPanel({
@@ -52,10 +63,19 @@ export function AdminPanel({
   onUpdate,
   onResetToDefault,
   onCloseAdmin,
+  onLogout,
 }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'cards' | 'support' | 'socials' | 'database' | 'backup'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'cards' | 'support' | 'socials' | 'database' | 'security' | 'backup'>('profile');
   const [activeCardSubTab, setActiveCardSubTab] = useState<'card1' | 'card2' | 'card3' | 'card4'>('card1');
   const [savedNotice, setSavedNotice] = useState(false);
+
+  // Admin Authentication & Credentials state
+  const [adminUser, setAdminUser] = useState(() => getLocalAdminCredentials().username);
+  const [newAdminUsername, setNewAdminUsername] = useState(() => getLocalAdminCredentials().username);
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
+  const [showPasswordFields, setShowPasswordFields] = useState(false);
+  const [securityStatus, setSecurityStatus] = useState<{ loading: boolean; success?: boolean; message?: string } | null>(null);
 
   // Supabase Database Connection States
   const [supabaseUrlInput, setSupabaseUrlInput] = useState(() => getActiveSupabaseCredentials().url);
@@ -67,6 +87,44 @@ export function AdminPanel({
   const showSaveSuccess = () => {
     setSavedNotice(true);
     setTimeout(() => setSavedNotice(false), 2000);
+  };
+
+  const handleSaveCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAdminUsername.trim()) {
+      setSecurityStatus({ loading: false, success: false, message: 'O nome de usuário não pode ficar vazio.' });
+      return;
+    }
+    if (newAdminPassword && newAdminPassword !== confirmAdminPassword) {
+      setSecurityStatus({ loading: false, success: false, message: 'A confirmação de senha não coincide com a nova senha.' });
+      return;
+    }
+    if (newAdminPassword && newAdminPassword.length < 4) {
+      setSecurityStatus({ loading: false, success: false, message: 'A nova senha deve ter no mínimo 4 caracteres.' });
+      return;
+    }
+
+    setSecurityStatus({ loading: true });
+    try {
+      const res = await updateAdminCredentials(newAdminUsername, newAdminPassword || undefined);
+      if (res.success) {
+        setAdminUser(newAdminUsername.trim());
+        setNewAdminPassword('');
+        setConfirmAdminPassword('');
+        setSecurityStatus({
+          loading: false,
+          success: true,
+          message: res.isSyncedToDatabase
+            ? 'Credenciais atualizadas com sucesso e sincronizadas com o banco de dados Supabase!'
+            : 'Credenciais atualizadas com sucesso no armazenamento local deste navegador.',
+        });
+        setTimeout(() => setSecurityStatus(null), 5000);
+      } else {
+        setSecurityStatus({ loading: false, success: false, message: res.error || 'Falha ao atualizar credenciais.' });
+      }
+    } catch (err: any) {
+      setSecurityStatus({ loading: false, success: false, message: err?.message || 'Erro inesperado ao salvar credenciais.' });
+    }
   };
 
   // Helper to update top-level section
@@ -176,6 +234,23 @@ export function AdminPanel({
             <Eye className="w-3.5 h-3.5" />
             <span>Ver Página Pública</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              clearAdminSession();
+              if (onLogout) {
+                onLogout();
+              } else {
+                onCloseAdmin();
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-700 text-xs font-semibold border border-gray-200 transition-all cursor-pointer"
+            title="Encerrar sessão de administrador"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Sair</span>
+          </button>
         </div>
       </header>
 
@@ -250,6 +325,19 @@ export function AdminPanel({
             {isSupabaseConfigured() && (
               <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('security')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              activeTab === 'security'
+                ? 'bg-[#ff4612] text-white shadow-xs'
+                : 'bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+            }`}
+          >
+            <Lock className="w-4 h-4" />
+            <span>Segurança & Login</span>
           </button>
 
           <button
@@ -1396,6 +1484,159 @@ export function AdminPanel({
                   </ol>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* TAB: SEGURANÇA & LOGIN DO PAINEL                        */}
+          {/* ======================================================== */}
+          {activeTab === 'security' && (
+            <div className="space-y-6 max-w-2xl">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <Lock className="w-5 h-5 text-[#ff4612]" />
+                  <span>Segurança & Credenciais de Acesso</span>
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Proteja seu painel administrativo definindo um nome de usuário e senha personalizados.
+                </p>
+              </div>
+
+              {/* Status Card */}
+              <div className="p-4 rounded-xl border border-gray-200 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-orange-100 text-[#ff4612] flex items-center justify-center font-bold">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium">Usuário Atual:</p>
+                    <p className="text-sm font-bold text-gray-900">{adminUser}</p>
+                  </div>
+                </div>
+
+                <div className="text-left sm:text-right">
+                  <span className="text-[11px] text-gray-500 block">Sincronização:</span>
+                  {isSupabaseConfigured() ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Banco de Dados Supabase (admin_auth)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 font-semibold bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                      Armazenamento Local (Navegador)
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Form to update credentials */}
+              <form onSubmit={handleSaveCredentials} className="p-5 rounded-2xl border border-gray-200 bg-white shadow-xs space-y-4">
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-gray-700" />
+                  <span>Alterar Nome de Usuário e Senha</span>
+                </h3>
+
+                {securityStatus && (
+                  <div
+                    className={`p-3 rounded-xl text-xs sm:text-sm flex items-start gap-2 ${
+                      securityStatus.success
+                        ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                        : 'bg-red-50 border border-red-200 text-red-800'
+                    }`}
+                  >
+                    {securityStatus.success ? (
+                      <CheckCircle className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
+                    )}
+                    <span>{securityStatus.message}</span>
+                  </div>
+                )}
+
+                {/* Username Input */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Nome de Usuário
+                  </label>
+                  <input
+                    type="text"
+                    value={newAdminUsername}
+                    onChange={(e) => setNewAdminUsername(e.target.value)}
+                    placeholder="Ex: vioor_admin"
+                    className="w-full px-3.5 py-2 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff4612] focus:border-transparent"
+                    required
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Identificação que você usará para entrar no painel.
+                  </p>
+                </div>
+
+                {/* Password Input */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-gray-700">
+                      Nova Senha
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswordFields(!showPasswordFields)}
+                      className="text-[11px] text-gray-500 hover:text-gray-800 flex items-center gap-1 cursor-pointer"
+                    >
+                      {showPasswordFields ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      <span>{showPasswordFields ? 'Ocultar' : 'Exibir'}</span>
+                    </button>
+                  </div>
+                  <input
+                    type={showPasswordFields ? 'text' : 'password'}
+                    value={newAdminPassword}
+                    onChange={(e) => setNewAdminPassword(e.target.value)}
+                    placeholder="Digite a nova senha (deixe em branco para manter a atual)"
+                    className="w-full px-3.5 py-2 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff4612] focus:border-transparent"
+                  />
+                </div>
+
+                {/* Confirm Password Input */}
+                {newAdminPassword && (
+                  <div className="animate-fadeIn">
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Confirmar Nova Senha
+                    </label>
+                    <input
+                      type={showPasswordFields ? 'text' : 'password'}
+                      value={confirmAdminPassword}
+                      onChange={(e) => setConfirmAdminPassword(e.target.value)}
+                      placeholder="Repita a nova senha para confirmação"
+                      className="w-full px-3.5 py-2 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff4612] focus:border-transparent"
+                    />
+                  </div>
+                )}
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={securityStatus?.loading}
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#ff4612] hover:bg-[#e03d0f] text-white font-bold text-xs sm:text-sm shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                  >
+                    <Lock className="w-4 h-4" />
+                    <span>Salvar Novas Credenciais</span>
+                  </button>
+                </div>
+              </form>
+
+              {/* Informative Note */}
+              <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 text-xs text-gray-600 space-y-2">
+                <p className="font-bold text-gray-800">
+                  🛡️ Como funciona a proteção de login:
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-[11.5px]">
+                  <li>Qualquer visitante que tente acessar a URL <code>?admin</code> verá uma tela de login moderna solicitando usuário e senha.</li>
+                  <li>As senhas são protegidas com criptografia nativa SHA-256 no navegador.</li>
+                  <li>Quando o Supabase estiver conectado, suas credenciais são armazenadas na nuvem na tabela <code>admin_auth</code>.</li>
+                  <li>Você pode encerrar a sessão a qualquer momento clicando no botão <strong>Sair</strong> no topo direito.</li>
+                </ul>
+              </div>
+
             </div>
           )}
 

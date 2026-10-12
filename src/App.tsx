@@ -20,7 +20,9 @@ import {
 import { PageData, CourseCardData } from './types/pageData';
 import { defaultPageData } from './data/defaultPageData';
 import { AdminPanel } from './components/AdminPanel';
+import { AdminLogin } from './components/AdminLogin';
 import { fetchRemotePageConfig, saveRemotePageConfig, isSupabaseConfigured } from './lib/supabase';
+import { isAdminAuthenticated, clearAdminSession } from './lib/auth';
 
 const STORAGE_KEY = 'vioor_page_data_v1';
 
@@ -28,29 +30,21 @@ export default function App() {
   // Page Data State (with localStorage persistence)
   const [pageData, setPageData] = useState<PageData>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('hanah_franklin_page_data_v2');
+      // Cleanse any old legacy keys from previous versions
+      if (typeof window !== 'undefined') {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && !k.startsWith('vioor_')) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
+      }
+
+      const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Cleanses any legacy reference to Hanah Franklin
-        if (parsed.profile?.name === 'Hanah Franklin') {
-          parsed.profile.name = defaultPageData.profile.name;
-          parsed.profile.avatarUrl = defaultPageData.profile.avatarUrl;
-          parsed.profile.bioHeading = defaultPageData.profile.bioHeading;
-          parsed.profile.bioBody = defaultPageData.profile.bioBody;
-        }
-        if (parsed.card1?.coverImage?.includes('hanah') || parsed.card1?.coverImage?.includes('portuguese_1791833654392')) {
-          parsed.card1.coverImage = defaultPageData.card1.coverImage;
-        }
-        if (parsed.card2?.coverImage?.includes('spanish_1791833665248')) {
-          parsed.card2.coverImage = defaultPageData.card2.coverImage;
-        }
-        if (parsed.card1?.modalSubtitle?.includes('Hanah')) {
-          parsed.card1.modalSubtitle = defaultPageData.card1.modalSubtitle;
-        }
-        if (parsed.card2?.modalSubtitle?.includes('Hanah')) {
-          parsed.card2.modalSubtitle = defaultPageData.card2.modalSubtitle;
-        }
-
         return {
           ...defaultPageData,
           ...parsed,
@@ -76,6 +70,9 @@ export default function App() {
     const url = window.location.href.toLowerCase();
     return url.includes('admin') || url.includes('admim');
   });
+
+  // Admin Login Authentication State
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => isAdminAuthenticated());
 
   // Dynamically synchronize browser tab favicon with pageData.faviconUrl
   useEffect(() => {
@@ -367,14 +364,28 @@ export default function App() {
     </article>
   );
 
-  // If Admin View is active, render the integrated Admin Panel!
+  // If Admin View is active, check authentication before allowing access
   if (isAdminView) {
+    if (!isAdminLoggedIn) {
+      return (
+        <AdminLogin
+          onLoginSuccess={() => setIsAdminLoggedIn(true)}
+          onCancel={closeAdmin}
+        />
+      );
+    }
+
     return (
       <AdminPanel
         pageData={pageData}
         onUpdate={handleUpdatePageData}
         onResetToDefault={handleResetToDefault}
         onCloseAdmin={closeAdmin}
+        onLogout={() => {
+          clearAdminSession();
+          setIsAdminLoggedIn(false);
+          closeAdmin();
+        }}
       />
     );
   }

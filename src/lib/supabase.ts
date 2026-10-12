@@ -9,24 +9,43 @@ import { PageData } from '../types/pageData';
 const STORAGE_URL_KEY = 'vioor_supabase_url_v1';
 const STORAGE_ANON_KEY = 'vioor_supabase_anon_key_v1';
 
-export const SUPABASE_SETUP_SQL = `-- 1. Criar a tabela de configurações da página (com id 'main')
+export const SUPABASE_SETUP_SQL = `-- ========================================================
+-- 1. TABELA DE CONTEÚDO DA PÁGINA (PÚBLICA)
+-- ========================================================
 create table if not exists public.page_config (
   id text primary key default 'main',
   data jsonb not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 2. Habilitar segurança em nível de linha (RLS)
 alter table public.page_config enable row level security;
 
--- 3. Permitir leitura pública para que os visitantes vejam o conteúdo
 drop policy if exists "Public read access" on public.page_config;
 create policy "Public read access" on public.page_config 
   for select using (true);
 
--- 4. Permitir atualização pública pelo painel de administração
 drop policy if exists "Public update access" on public.page_config;
 create policy "Public update access" on public.page_config 
+  for all using (true) with check (true);
+
+-- ========================================================
+-- 2. TABELA DE AUTENTICAÇÃO DO ADMINISTRADOR (VIOOR)
+-- ========================================================
+create table if not exists public.admin_auth (
+  id text primary key default 'credentials',
+  username text not null default 'admin',
+  password_hash text not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.admin_auth enable row level security;
+
+drop policy if exists "Admin auth read access" on public.admin_auth;
+create policy "Admin auth read access" on public.admin_auth 
+  for select using (true);
+
+drop policy if exists "Admin auth update access" on public.admin_auth;
+create policy "Admin auth update access" on public.admin_auth 
   for all using (true) with check (true);
 `;
 
@@ -41,8 +60,8 @@ export function getActiveSupabaseCredentials(): { url: string; key: string; sour
   
   if (typeof window !== 'undefined') {
     try {
-      storageUrl = localStorage.getItem(STORAGE_URL_KEY) || localStorage.getItem('hanah_supabase_url_v1') || '';
-      storageKey = localStorage.getItem(STORAGE_ANON_KEY) || localStorage.getItem('hanah_supabase_anon_key_v1') || '';
+      storageUrl = localStorage.getItem(STORAGE_URL_KEY) || '';
+      storageKey = localStorage.getItem(STORAGE_ANON_KEY) || '';
     } catch (e) {
       // Ignora erro de localStorage
     }
