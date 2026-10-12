@@ -1,0 +1,6 @@
+{
+  "name": "Hanah Franklin - Crie seu Futuro",
+  "description": "Página oficial de Hanah Franklin: Método para Viralização, cursos de criação de conteúdo e suporte a alunos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
