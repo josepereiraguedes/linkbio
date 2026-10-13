@@ -217,35 +217,113 @@ export async function fetchRemotePageConfig(): Promise<PageData | null> {
   return null;
 }
 
-/**
- * Salva ou atualiza a configuração da página no Supabase (incluindo favicon e todos os cards).
- */
-export async function saveRemotePageConfig(pageData: PageData): Promise<{ success: boolean; error?: string }> {
+// Concurrency control & Debouncing queue
+let isSavingInProgress = false;
+let queuedPageData: PageData | null = null;
+let saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function executeUpsert(
+  pageData: PageData,
+  retryCount = 0
+): Promise<{ success: boolean; error?: string }> {
   const client = getSupabaseClient();
   if (!client) {
-    return { 
-      success: false, 
-      error: 'Supabase não está configurado. Conecte com URL e Chave no painel ou via variáveis de ambiente.' 
+    return {
+      success: false,
+      error: 'Supabase não está configurado. Conecte com URL e Chave no painel ou via variáveis de ambiente.',
     };
   }
+
+  isSavingInProgress = true;
 
   try {
     const { error } = await client
       .from('page_config')
-      .upsert({
-        id: 'main',
-        data: pageData,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'id' });
+      .upsert(
+        {
+          id: 'main',
+          data: pageData,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
 
     if (error) {
-      console.error('Supabase: Erro ao persistir dados:', error);
+      // Error code 57014 = statement timeout (due to lock contention or network pause)
+      if (error.code === '57014' && retryCount < 2) {
+        console.warn(
+          `Supabase: Timeout transitório detectado (57014). Reenviando em 1.2s... (tentativa ${retryCount + 1})`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 1200 + Math.random() * 400));
+        return executeUpsert(queuedPageData || pageData, retryCount + 1);
+      }
+
+      console.warn('Supabase: Aviso ao persistir dados:', error.message || error);
       return { success: false, error: error.message };
     }
 
     return { success: true };
   } catch (err: any) {
-    console.error('Supabase: Exceção ao persistir dados:', err);
-    return { success: false, error: err?.message || 'Falha de rede ou timeout ao conectar com o Supabase' };
+    if (retryCount < 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return executeUpsert(queuedPageData || pageData, retryCount + 1);
+    }
+    console.warn('Supabase: Exceção na persistência:', err?.message || err);
+    return {
+      success: false,
+      error: err?.message || 'Falha transitória na conexão com o banco',
+    };
+  } finally {
+    isSavingInProgress = false;
+
+    // If another update arrived while the current one was processing, execute the latest
+    if (queuedPageData) {
+      const nextData = queuedPageData;
+      queuedPageData = null;
+      // Slight delay to release any Postgres transaction lock cleanly
+      setTimeout(() => {
+        executeUpsert(nextData);
+      }, 150);
+    }
   }
+}
+
+/**
+ * Salva ou atualiza a configuração da página no Supabase de forma segura,
+ * com fila de concorrência e debounce para evitar timeouts por sobrecarga (código 57014).
+ */
+export async function saveRemotePageConfig(
+  pageData: PageData,
+  immediate = false
+): Promise<{ success: boolean; error?: string }> {
+  // If an immediate save is requested (e.g. user clicked Save/Reset button)
+  if (immediate) {
+    if (saveDebounceTimer) {
+      clearTimeout(saveDebounceTimer);
+      saveDebounceTimer = null;
+    }
+    queuedPageData = null;
+    return executeUpsert(pageData);
+  }
+
+  // Otherwise, debounce frequent inputs (typing, sliders) to coalesce rapid queries
+  queuedPageData = pageData;
+
+  if (saveDebounceTimer) {
+    clearTimeout(saveDebounceTimer);
+  }
+
+  return new Promise((resolve) => {
+    saveDebounceTimer = setTimeout(async () => {
+      saveDebounceTimer = null;
+      if (!isSavingInProgress && queuedPageData) {
+        const dataToSave = queuedPageData;
+        queuedPageData = null;
+        const result = await executeUpsert(dataToSave);
+        resolve(result);
+      } else {
+        resolve({ success: true });
+      }
+    }, 450);
+  });
 }

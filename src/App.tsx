@@ -155,7 +155,7 @@ export default function App() {
     }
 
     if (isSupabaseConfigured()) {
-      saveRemotePageConfig(defaultPageData);
+      saveRemotePageConfig(defaultPageData, true);
     }
   };
 

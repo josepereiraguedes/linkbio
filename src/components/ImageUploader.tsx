@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useRef } from 'react';
-import { Upload, Link2, RotateCcw } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Upload, Link2, RotateCcw, Loader2 } from 'lucide-react';
 
 interface ImageUploaderProps {
   label: string;
@@ -12,6 +12,64 @@ interface ImageUploaderProps {
   defaultValue?: string;
   onChange: (newValue: string) => void;
   aspectRatio?: '1:1' | '3:4';
+}
+
+function compressImageFile(file: File, maxDimension = 1280, quality = 0.85): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (file.type === 'image/svg+xml') {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        // Skip resizing if already small
+        if (width <= maxDimension && height <= maxDimension && file.size < 180 * 1024) {
+          resolve(dataUrl);
+          return;
+        }
+
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const compressed = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressed);
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 export function ImageUploader({
@@ -22,25 +80,37 @@ export function ImageUploader({
   aspectRatio = '3:4',
 }: ImageUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check image type
     if (!file.type.startsWith('image/')) {
       alert('Por favor, selecione um arquivo de imagem válido (PNG, JPG, WEBP).');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      if (base64) {
-        onChange(base64);
+    try {
+      setIsCompressing(true);
+      const optimizedBase64 = await compressImageFile(file);
+      if (optimizedBase64) {
+        onChange(optimizedBase64);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('Erro ao otimizar imagem, usando fallback direto:', err);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        if (base64) onChange(base64);
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsCompressing(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
   return (
@@ -97,11 +167,21 @@ export function ImageUploader({
             />
             <button
               type="button"
+              disabled={isCompressing}
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-semibold transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-gray-100 hover:bg-gray-200 disabled:opacity-60 text-gray-700 text-[11px] font-semibold transition-colors cursor-pointer"
             >
-              <Upload className="w-3 h-3 text-gray-500" />
-              <span>Enviar do Computador</span>
+              {isCompressing ? (
+                <>
+                  <Loader2 className="w-3 h-3 text-[#ff4612] animate-spin" />
+                  <span>Otimizando imagem...</span>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-3 h-3 text-gray-500" />
+                  <span>Enviar do Computador</span>
+                </>
+              )}
             </button>
 
             {defaultValue && value !== defaultValue && (

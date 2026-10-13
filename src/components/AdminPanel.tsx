@@ -1379,7 +1379,7 @@ export function AdminPanel({
                       }
                       saveCustomSupabaseCredentials(supabaseUrlInput, supabaseKeyInput);
                       setSyncStatus('Salvando credenciais e sincronizando dados da página...');
-                      const saveRes = await saveRemotePageConfig(pageData);
+                      const saveRes = await saveRemotePageConfig(pageData, true);
                       if (saveRes.success) {
                         setSyncStatus('Tudo pronto! Todas as informações (incluindo o Favicon) foram salvas no Supabase!');
                         setTimeout(() => setSyncStatus(null), 4000);
