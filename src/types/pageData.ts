@@ -65,6 +65,9 @@ export interface ProfileData {
   bioBody: string;
   stat1: string;
   stat2: string;
+  avatarZoom?: number; // Zoom level in percentage (e.g. 100 to 250)
+  avatarPosX?: number; // Horizontal focus point percentage 0-100 (default 50)
+  avatarPosY?: number; // Vertical focus point percentage 0-100 (default 50)
 }
 
 export interface PageData {

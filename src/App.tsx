@@ -95,9 +95,18 @@ export default function App() {
     if (isSupabaseConfigured()) {
       fetchRemotePageConfig().then((remoteData) => {
         if (remoteData) {
-          setPageData(remoteData);
+          const mergedData: PageData = {
+            ...defaultPageData,
+            ...remoteData,
+            faviconUrl: remoteData.faviconUrl || defaultPageData.faviconUrl,
+            profile: {
+              ...defaultPageData.profile,
+              ...remoteData.profile,
+            },
+          };
+          setPageData(mergedData);
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteData));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedData));
           } catch (e) {
             console.warn(e);
           }
@@ -423,51 +432,64 @@ export default function App() {
       <main className="w-full max-w-[1260px] mx-auto flex flex-col lg:flex-row items-center lg:items-start justify-center gap-10 lg:gap-14 py-6 sm:py-10">
         
         {/* Left Column: Profile Info with smooth entrance */}
-        <section className="flex flex-col items-center lg:items-start text-center lg:text-left shrink-0 w-full max-w-[340px] animate-fade-slide-up">
-          
-          {/* Circular Avatar with smooth hover micro-interaction */}
-          <div className="relative group cursor-default">
-            <div className="w-36 h-36 sm:w-44 sm:h-44 md:w-48 md:h-48 rounded-full overflow-hidden shadow-sm border-[4px] border-white/90 bg-emerald-100 flex items-center justify-center transition-all duration-500 ease-out group-hover:scale-103 group-hover:shadow-md group-hover:border-white">
-              <img
-                src={pageData.profile.avatarUrl}
-                alt={pageData.profile.name}
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover object-center select-none transition-transform duration-700 ease-out group-hover:scale-108"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = defaultPageData.profile.avatarUrl;
-                }}
-              />
-            </div>
-            {/* Verification badge */}
-            <div className="absolute bottom-1.5 right-2.5 bg-white rounded-full p-1 shadow-xs border border-gray-100 transition-transform duration-300 ease-out group-hover:scale-110">
-              <div className="w-5 h-5 rounded-full bg-[#ff4612] flex items-center justify-center text-white text-[11px] font-bold">
-                ✓
+        {(() => {
+          const avatarZoom = pageData.profile.avatarZoom ?? 100;
+          const avatarPosX = pageData.profile.avatarPosX ?? 50;
+          const avatarPosY = pageData.profile.avatarPosY ?? 50;
+
+          return (
+            <section className="flex flex-col items-center lg:items-start text-center lg:text-left shrink-0 w-full max-w-[350px] lg:max-w-[380px] animate-fade-slide-up">
+              
+              {/* Circular Avatar with smooth hover micro-interaction */}
+              <div className="relative group cursor-default">
+                <div className="w-44 h-44 sm:w-52 sm:h-52 md:w-56 md:h-56 lg:w-60 lg:h-60 rounded-full overflow-hidden shadow-md sm:shadow-lg border-[5px] sm:border-[6px] border-white/95 bg-emerald-100 flex items-center justify-center transition-all duration-500 ease-out group-hover:scale-102 group-hover:shadow-xl group-hover:border-white">
+                  <img
+                    src={pageData.profile.avatarUrl}
+                    alt={pageData.profile.name}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover select-none transition-transform duration-700 ease-out group-hover:scale-106"
+                    style={{
+                      objectPosition: `${avatarPosX}% ${avatarPosY}%`,
+                      transform: `scale(${avatarZoom / 100})`,
+                      transformOrigin: `${avatarPosX}% ${avatarPosY}%`,
+                    }}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = defaultPageData.profile.avatarUrl;
+                    }}
+                  />
+                </div>
+                {/* Verification badge */}
+                <div className="absolute bottom-2 right-2 sm:bottom-2.5 sm:right-3 bg-white rounded-full p-1.5 shadow-md border border-gray-100 transition-transform duration-300 ease-out group-hover:scale-110">
+                  <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-[#ff4612] flex items-center justify-center text-white text-[11px] sm:text-[13px] font-bold">
+                    ✓
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Name */}
-          <h1 className="mt-6 text-[30px] sm:text-[34px] md:text-[38px] font-extrabold tracking-tight text-gray-950 leading-none">
-            {pageData.profile.name}
-          </h1>
+              {/* Name */}
+              <h1 className="mt-6 text-[30px] sm:text-[34px] md:text-[38px] font-extrabold tracking-tight text-gray-950 leading-none">
+                {pageData.profile.name}
+              </h1>
 
-          {/* Bio Description */}
-          <div className="mt-3 text-[14.5px] sm:text-[15.5px] md:text-[16px] text-gray-600 leading-relaxed max-w-[300px] sm:max-w-[320px]">
-            <p className="font-medium text-gray-700">{pageData.profile.bioHeading}</p>
-            <p className="mt-1">{pageData.profile.bioBody}</p>
-          </div>
+              {/* Bio Description */}
+              <div className="mt-3 text-[14.5px] sm:text-[15.5px] md:text-[16px] text-gray-600 leading-relaxed max-w-[310px] sm:max-w-[330px]">
+                <p className="font-medium text-gray-700">{pageData.profile.bioHeading}</p>
+                <p className="mt-1">{pageData.profile.bioBody}</p>
+              </div>
 
-          {/* Quick Stats Pill */}
-          <div className="mt-5 flex items-center gap-3.5 text-xs sm:text-sm text-gray-500">
-            <span className="flex items-center gap-1.5 font-semibold text-gray-800">
-              <TrendingUp className="w-4 h-4 text-[#ff4612]" /> {pageData.profile.stat1}
-            </span>
-            <span aria-hidden="true" className="text-gray-300">·</span>
-            <span className="flex items-center gap-1.5 font-medium text-gray-600">
-              <Flame className="w-4 h-4 text-amber-500" /> {pageData.profile.stat2}
-            </span>
-          </div>
-        </section>
+              {/* Quick Stats Pill */}
+              <div className="mt-5 flex items-center gap-3.5 text-xs sm:text-sm text-gray-500">
+                <span className="flex items-center gap-1.5 font-semibold text-gray-800">
+                  <TrendingUp className="w-4 h-4 text-[#ff4612]" /> {pageData.profile.stat1}
+                </span>
+                <span aria-hidden="true" className="text-gray-300">·</span>
+                <span className="flex items-center gap-1.5 font-medium text-gray-600">
+                  <Flame className="w-4 h-4 text-amber-500" /> {pageData.profile.stat2}
+                </span>
+              </div>
+            </section>
+          );
+        })()}
 
         {/* Right Section: 4 Full Course Cards (Grid 2x2 on desktop, single column on mobile) + Social Buttons right-aligned */}
         <section className="w-full max-w-[850px] lg:max-w-[880px] flex flex-col">

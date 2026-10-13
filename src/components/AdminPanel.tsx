@@ -34,6 +34,7 @@ import {
 import { PageData, CourseCardData, SupportReason } from '../types/pageData';
 import { defaultPageData } from '../data/defaultPageData';
 import { ImageUploader } from './ImageUploader';
+import { ProfilePhotoFramer } from './ProfilePhotoFramer';
 import { 
   getActiveSupabaseCredentials, 
   saveCustomSupabaseCredentials, 
@@ -374,13 +375,24 @@ export function AdminPanel({
               {/* Avatar Uploader */}
               <div className="pt-2">
                 <ImageUploader
-                  label="Foto do Avatar (Circular)"
+                  label="Foto do Avatar (Envio & URL)"
                   value={pageData.profile.avatarUrl}
                   defaultValue={defaultPageData.profile.avatarUrl}
                   onChange={(val) =>
-                    updateSection('profile', { ...pageData.profile, avatarUrl: val })
+                    updateSection('profile', { 
+                      ...pageData.profile, 
+                      avatarUrl: val,
+                    })
                   }
                   aspectRatio="1:1"
+                />
+              </div>
+
+              {/* Interactive Photo Framing & Positioning Tool */}
+              <div className="pt-1">
+                <ProfilePhotoFramer
+                  profile={pageData.profile}
+                  onChange={(updatedProfile) => updateSection('profile', updatedProfile)}
                 />
               </div>
 

@@ -19,6 +19,9 @@ export const defaultPageData: PageData = {
     bioBody: 'Transforme habilidades digitais em liberdade, relevância, influência e autoridade para sua marca.',
     stat1: '+1.2M Visualizações',
     stat2: 'Agência Digital',
+    avatarZoom: 100,
+    avatarPosX: 50,
+    avatarPosY: 50,
   },
   card1: {
     id: 'card1',
