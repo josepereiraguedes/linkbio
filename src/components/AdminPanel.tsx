@@ -1684,16 +1684,24 @@ export function AdminPanel({
               <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-2">
                 <div className="flex items-center gap-1.5 font-bold text-amber-950">
                   <HelpCircle className="w-4 h-4 text-amber-700" />
-                  <span>Como acessar este painel:</span>
+                  <span>Como acessar este painel (incluindo no Netlify):</span>
                 </div>
                 <p>
-                  Basta colocar a palavra <strong>admin</strong> ou <strong>admim</strong> no final do link da página no seu navegador:
+                  Você pode acessar o painel de 3 formas fáceis no seu navegador:
                 </p>
-                <div className="p-2 rounded bg-white/80 border border-amber-200 font-mono text-[11px] text-gray-800 break-all select-all">
-                  {window.location.origin}{window.location.pathname}?admin
+                <div className="space-y-1.5">
+                  <div className="p-2 rounded bg-white/80 border border-amber-200 font-mono text-[11px] text-gray-800 break-all select-all flex items-center justify-between">
+                    <span>1. Rota Direta: <strong>{window.location.origin}/admin</strong></span>
+                  </div>
+                  <div className="p-2 rounded bg-white/80 border border-amber-200 font-mono text-[11px] text-gray-800 break-all select-all flex items-center justify-between">
+                    <span>2. Parâmetro URL: <strong>{window.location.origin}/?admin</strong></span>
+                  </div>
+                  <div className="p-2 rounded bg-white/80 border border-amber-200 font-mono text-[11px] text-gray-800 break-all select-all flex items-center justify-between">
+                    <span>3. Hash: <strong>{window.location.origin}/#admin</strong></span>
+                  </div>
                 </div>
-                <p className="text-[11px] text-amber-800">
-                  Também funciona com <code>?admim</code>, <code>#admin</code> ou <code>#admim</code>. Todas as alterações ficam salvas no seu navegador instantaneamente!
+                <p className="text-[11px] text-amber-800 leading-relaxed pt-1">
+                  💡 <strong>Dica para o Netlify:</strong> O arquivo <code>_redirects</code> e o <code>netlify.toml</code> já foram incluídos no projeto para garantir que o Netlify redirecione rotas como <code>/admin</code> diretamente para o aplicativo sem dar erro 404. Se você preferir uma alternativa instantânea sem depender de reconfiguração de hospedagem, basta usar <code>/?admin</code> ou <code>/#admin</code>!
                 </p>
               </div>
 

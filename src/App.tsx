@@ -166,6 +166,9 @@ export default function App() {
     if (url.hash.includes('admin') || url.hash.includes('admim')) {
       url.hash = '';
     }
+    if (url.pathname.toLowerCase().includes('admin') || url.pathname.toLowerCase().includes('admim')) {
+      url.pathname = '/';
+    }
     window.history.pushState({}, '', url.toString());
     setIsAdminView(false);
   };
